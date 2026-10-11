@@ -6,3 +6,4 @@ qrcode[pil]
 python-dotenv
 pytest
 gunicorn
+psycopg2-binary
