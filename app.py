@@ -2122,12 +2122,12 @@ with app.app_context():
 
     admin_email = os.getenv(
         "UMEED_ADMIN_EMAIL",
-        "admin@umeed.local"
+        "umeed@admin.com"
     ).strip().lower()
 
     admin_password = os.getenv(
         "UMEED_ADMIN_PASSWORD",
-        "UmeedAdmin123!"
+        "umeed1234"
     )
 
     existing_admin = User.query.filter_by(
