@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Edit NGO Profile | Umeed{% endblock %}
+
+{% block content %}
+
+<section class="row justify-content-center">
+
+    <div class="col-lg-8">
+
+        <div class="feature-card">
+
+            <h1 class="h2 mb-2">
+                Edit NGO Profile
+            </h1>
+
+            <p class="text-secondary mb-4">
+                Keep your organisation's public information clear
+                and up to date. These details appear on the
+                Affiliated NGOs page.
+            </p>
+
+
+            <form method="post">
+
+                <!-- Organisation name -->
+
+                <div class="mb-3">
+
+                    <label
+                        for="name"
+                        class="form-label"
+                    >
+                        Organisation name
+                    </label>
+
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        class="form-control"
+                        maxlength="150"
+                        value="{{ ngo.name }}"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- Location -->
+
+                <div class="mb-3">
+
+                    <label
+                        for="location"
+                        class="form-label"
+                    >
+                        Location
+                    </label>
+
+                    <input
+                        type="text"
+                        id="location"
+                        name="location"
+                        class="form-control"
+                        maxlength="200"
+                        value="{{ ngo.location or '' }}"
+                        placeholder="City, state"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- Organisation description -->
+
+                <div class="mb-4">
+
+                    <label
+                        for="description"
+                        class="form-label"
+                    >
+                        About your organisation
+                    </label>
+
+                    <textarea
+                        id="description"
+                        name="description"
+                        class="form-control"
+                        rows="5"
+                        maxlength="600"
+                        required
+                        placeholder="Describe your relief work, the communities you support, and the assistance you provide."
+                    >{{ ngo.description or '' }}</textarea>
+
+                    <div class="form-text">
+                        Maximum 600 characters. Describe your
+                        organisation's actual work and services.
+                    </div>
+
+                </div>
+
+
+                <!-- Actions -->
+
+                <div class="d-flex flex-wrap gap-2">
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                    >
+                        Save profile
+                    </button>
+
+                    <a
+                        href="{{ url_for('ngo_campaigns') }}"
+                        class="btn btn-outline-secondary"
+                    >
+                        Cancel
+                    </a>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

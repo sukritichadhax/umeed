@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in | Umeed{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+
+        <div class="feature-card">
+
+            <h1
+                data-en="Welcome back"
+                data-hi="फिर से स्वागत है"
+            >Welcome back</h1>
+
+            <p
+                data-en="Sign in to manage your Umeed account."
+                data-hi="अपने Umeed खाते को प्रबंधित करने के लिए लॉग इन करें।"
+            >Sign in to manage your Umeed account.</p>
+
+            <form method="post">
+
+                <!-- Email address -->
+                <div class="mb-3">
+
+                    <label
+                        for="email"
+                        class="form-label"
+                        data-en="Email address"
+                        data-hi="ईमेल पता"
+                    >Email address</label>
+
+                    <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        class="form-control"
+                        required
+                        autocomplete="email"
+                    >
+
+                </div>
+
+                <!-- Password -->
+                <div class="mb-3">
+
+                    <label
+                        for="password"
+                        class="form-label"
+                        data-en="Password"
+                        data-hi="पासवर्ड"
+                    >Password</label>
+
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        class="form-control"
+                        required
+                        autocomplete="current-password"
+                    >
+
+                </div>
+
+                <!-- Sign in button -->
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                    data-en="Sign in"
+                    data-hi="लॉग इन करें"
+                >Sign in</button>
+
+            </form>
+
+            <!-- Registration link -->
+            <p class="mt-4 mb-0">
+
+                <span
+                    data-en="New to Umeed?"
+                    data-hi="Umeed पर नए हैं?"
+                >New to Umeed?</span>
+
+                <a
+                    href="{{ url_for('register') }}"
+                    data-en="Create an account"
+                    data-hi="अपना खाता बनाएँ"
+                >Create an account</a>
+
+            </p>
+
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Donate Supplies | Umeed{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+
+    <div class="col-lg-9">
+
+        <div class="feature-card">
+
+            <h1 class="h2">Donate supplies</h1>
+
+            <p class="text-secondary">
+                Campaign: <strong>{{ campaign.title }}</strong>
+            </p>
+
+            <p>
+                Your donation will be recorded against this campaign.
+                The NGO must confirm the offer before it is treated as accepted.
+            </p>
+
+            <form method="post">
+
+                <h2 class="h5 mt-4">Items in your donation</h2>
+
+                <div id="itemRows">
+
+                    <div class="donation-item-row row g-2 mb-3">
+
+                        <div class="col-md-5">
+                            <label class="form-label">Item name</label>
+
+                            <input
+                                name="item_name"
+                                class="form-control"
+                                maxlength="120"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Quantity</label>
+
+                            <input
+                                name="declared_qty"
+                                type="number"
+                                min="1"
+                                max="10000"
+                                class="form-control"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Condition</label>
+
+                            <select
+                                name="condition"
+                                class="form-select"
+                                required
+                            >
+                                <option value="good">Good</option>
+                                <option value="usable">Usable</option>
+                                <option value="needs_review">Needs review</option>
+                            </select>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <button
+                    type="button"
+                    id="addItemButton"
+                    class="btn btn-outline-secondary btn-sm mb-4"
+                >
+                    + Add another item
+                </button>
+
+                <div class="mb-3">
+
+                    <label
+                        for="delivery_method"
+                        class="form-label"
+                    >
+                        Delivery method
+                    </label>
+
+                    <select
+                        name="delivery_method"
+                        id="delivery_method"
+                        class="form-select"
+                    >
+                        <option value="drop_off">
+                            I will drop off the donation
+                        </option>
+
+                        <option value="collection_request">
+                            Request a collection
+                        </option>
+                    </select>
+
+                    <div class="form-text">
+                        A collection request is not a confirmed pickup.
+                        The NGO must review availability separately.
+                    </div>
+
+                </div>
+
+                <div class="mb-4">
+
+                    <label for="notes" class="form-label">
+                        Additional notes (optional)
+                    </label>
+
+                    <textarea
+                        id="notes"
+                        name="notes"
+                        class="form-control"
+                        rows="3"
+                        maxlength="1000"
+                    ></textarea>
+
+                </div>
+
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                >
+                    Register donation
+                </button>
+
+                <a
+                    href="{{ url_for('campaign_detail', campaign_id=campaign.id) }}"
+                    class="btn btn-outline-secondary ms-2"
+                >
+                    Cancel
+                </a>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+    const itemRows = document.getElementById("itemRows");
+    const addItemButton = document.getElementById("addItemButton");
+
+    addItemButton.addEventListener("click", () => {
+
+        if (itemRows.children.length >= 10) {
+            alert("You can add a maximum of 10 item types.");
+            return;
+        }
+
+        const row = document.createElement("div");
+
+        row.className = "donation-item-row row g-2 mb-3";
+
+        row.innerHTML = `
+            <div class="col-md-5">
+                <label class="form-label">Item name</label>
+                <input
+                    name="item_name"
+                    class="form-control"
+                    maxlength="120"
+                    required
+                >
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Quantity</label>
+                <input
+                    name="declared_qty"
+                    type="number"
+                    min="1"
+                    max="10000"
+                    class="form-control"
+                    required
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Condition</label>
+                <select name="condition" class="form-select" required>
+                    <option value="good">Good</option>
+                    <option value="usable">Usable</option>
+                    <option value="needs_review">Needs review</option>
+                </select>
+            </div>
+
+            <div class="col-12">
+                <button
+                    type="button"
+                    class="btn btn-link text-danger remove-item"
+                >
+                    Remove item
+                </button>
+            </div>
+        `;
+
+        itemRows.appendChild(row);
+
+    });
+
+    itemRows.addEventListener("click", (event) => {
+
+        if (event.target.classList.contains("remove-item")) {
+            event.target.closest(".donation-item-row").remove();
+        }
+
+    });
+</script>
+
+{% endblock %}

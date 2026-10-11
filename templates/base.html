@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <meta
+        name="description"
+        content="Umeed helps donors and relief organisations manage physical donations transparently."
+    >
+
+    <meta
+        name="theme-color"
+        content="#1C2F4C"
+    >
+
+    <title>
+        {% block title %}
+            Umeed | Donate with confidence
+        {% endblock %}
+    </title>
+
+
+    <!-- Bootstrap -->
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+
+    <!-- Umeed stylesheet -->
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+</head>
+
+
+<body>
+
+
+    <!-- ==========================================
+         HEADER AND NAVIGATION
+         ========================================== -->
+
+    <header>
+
+        <nav
+            class="site-nav"
+            aria-label="Main navigation"
+        >
+
+            <div class="container nav-container">
+
+
+                <!-- =================================
+                     UMEED LOGO
+                     ================================= -->
+
+                <a
+                    class="navbar-brand"
+                    href="{{ url_for('home') }}"
+                    aria-label="Umeed"
+                >
+
+                    Umeed<span class="brand-dot">.</span>
+
+                </a>
+
+
+                <!-- =================================
+                     NAVIGATION LINKS
+                     ================================= -->
+
+                <div class="nav-actions">
+
+
+                    <!-- =================================
+                         SIGNED-OUT VISITOR
+                         ================================= -->
+
+                    {% if not current_user.is_authenticated %}
+
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('home') }}"
+                            data-en="Home"
+                            data-hi="होम"
+                        >
+                            Home
+                        </a>
+
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('campaigns') }}"
+                            data-en="Explore Campaigns"
+                            data-hi="अभियान खोजें"
+                        >
+                            Explore Campaigns
+                        </a>
+
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('affiliated_ngos') }}"
+                            data-en="Affiliated NGOs"
+                            data-hi="संबद्ध NGO"
+                        >
+                            Affiliated NGOs
+                        </a>
+
+
+                    <!-- =================================
+                         DONOR NAVIGATION
+                         ================================= -->
+
+                    {% elif current_user.role == "donor" %}
+
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('home') }}"
+                            data-en="Home"
+                            data-hi="होम"
+                        >
+                            Home
+                        </a>
+
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('campaigns') }}"
+                            data-en="Explore Campaigns"
+                            data-hi="अभियान खोजें"
+                        >
+                            Explore Campaigns
+                        </a>
+
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('affiliated_ngos') }}"
+                            data-en="Affiliated NGOs"
+                            data-hi="संबद्ध NGO"
+                        >
+                            Affiliated NGOs
+                        </a>
+
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('dashboard') }}"
+                            data-en="My Donations"
+                            data-hi="मेरे दान"
+                        >
+                            My Donations
+                        </a>
+
+
+                    <!-- =================================
+                         NGO REPRESENTATIVE NAVIGATION
+                         ================================= -->
+
+<!-- ==========================================
+     NGO REPRESENTATIVE NAVIGATION
+     ========================================== -->
+
+{% elif current_user.role == "ngo_staff" %}
+
+    <!-- Home -->
+
+    <a
+        class="nav-item-link"
+        href="{{ url_for('home') }}"
+        data-en="Home"
+        data-hi="होम"
+    >
+        Home
+    </a>
+
+
+    {% if current_user.ngo
+          and current_user.ngo.status == "approved" %}
+
+
+        <!-- Our Donations -->
+
+        <a
+            class="nav-item-link"
+            href="{{ url_for('ngo_donations') }}"
+            data-en="Our Donations"
+            data-hi="हमारे दान"
+        >
+            Our Donations
+        </a>
+
+
+        <!-- Our Campaigns -->
+
+        <a
+            class="nav-item-link"
+            href="{{ url_for('ngo_campaigns') }}"
+            data-en="Our Campaigns"
+            data-hi="हमारे अभियान"
+        >
+            Our Campaigns
+        </a>
+
+
+        <!-- Create Offline Donation -->
+
+        <a
+            class="nav-item-link"
+            href="{{ url_for('offline_donation') }}"
+            data-en="Create Offline Donation"
+            data-hi="ऑफलाइन दान दर्ज करें"
+        >
+            Create Offline Donation
+        </a>
+
+
+        <!-- Create Campaign -->
+
+        <a
+            class="nav-item-link"
+            href="{{ url_for('create_campaign') }}"
+            data-en="Create Campaign"
+            data-hi="अभियान बनाएँ"
+        >
+            Create Campaign
+        </a>
+
+
+    {% else %}
+
+
+        <!-- Pending NGO registration -->
+
+        <a
+            class="nav-item-link"
+            href="{{ url_for('dashboard') }}"
+            data-en="NGO Workspace"
+            data-hi="NGO कार्यक्षेत्र"
+        >
+            NGO Workspace
+        </a>
+
+
+    {% endif %}
+
+
+                    <!-- =================================
+                         ADMINISTRATOR NAVIGATION
+                         ================================= -->
+
+                    {% elif current_user.role == "admin" %}
+
+
+                        <!-- Administrators do not need a Home link. -->
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('campaigns') }}"
+                            data-en="Explore Campaigns"
+                            data-hi="अभियान खोजें"
+                        >
+                            Explore Campaigns
+                        </a>
+
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('affiliated_ngos') }}"
+                            data-en="Affiliated NGOs"
+                            data-hi="संबद्ध NGO"
+                        >
+                            Affiliated NGOs
+                        </a>
+
+
+                        <a
+                            class="nav-item-link"
+                            href="{{ url_for('dashboard') }}"
+                            data-en="Admin Panel"
+                            data-hi="एडमिन पैनल"
+                        >
+                            Admin Panel
+                        </a>
+
+
+                    {% endif %}
+
+
+
+                    <!-- =================================
+                         ACCOUNT CONTROLS
+                         ================================= -->
+
+                    {% if current_user.is_authenticated %}
+
+
+                        <!-- Signed-in account bubble -->
+
+                        <div class="account-pill account-pill-signed-in">
+
+
+                            <!-- Default head-and-shoulders icon -->
+
+                            <span
+                                class="account-avatar"
+                                aria-hidden="true"
+                            >
+
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="21"
+                                    height="21"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+
+                                    <circle
+                                        cx="12"
+                                        cy="8"
+                                        r="4"
+                                    ></circle>
+
+                                    <path
+                                        d="M5 21v-2a7 7 0 0 1 14 0v2"
+                                    ></path>
+
+                                </svg>
+
+                            </span>
+
+
+                            <!-- User name -->
+
+                            <span class="account-name">
+                                {{ current_user.name }}
+                            </span>
+
+
+                            <span
+                                class="account-divider"
+                                aria-hidden="true"
+                            >
+                                |
+                            </span>
+
+
+                            <!-- Sign-out form -->
+
+                            <form
+                                action="{{ url_for('logout') }}"
+                                method="post"
+                                class="account-logout-form"
+                            >
+
+                                <button
+                                    type="submit"
+                                    class="account-logout-button"
+                                    data-en="Sign out"
+                                    data-hi="लॉग आउट"
+                                >
+                                    Sign out
+                                </button>
+
+                            </form>
+
+                        </div>
+
+
+                    {% else %}
+
+
+                        <!-- Signed-out account bubble -->
+
+                        <div class="account-pill account-pill-signed-out">
+
+
+                            <a
+                                href="{{ url_for('login') }}"
+                                class="account-link"
+                                data-en="Login"
+                                data-hi="लॉग इन"
+                            >
+                                Login
+                            </a>
+
+
+                            <span
+                                class="account-divider"
+                                aria-hidden="true"
+                            >
+                                |
+                            </span>
+
+
+                            <a
+                                href="{{ url_for('register') }}"
+                                class="account-link"
+                                data-en="Create Account"
+                                data-hi="खाता बनाएँ"
+                            >
+                                Create Account
+                            </a>
+
+
+                            <!-- Default user icon -->
+
+                            <span
+                                class="account-avatar"
+                                aria-hidden="true"
+                            >
+
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="21"
+                                    height="21"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+
+                                    <circle
+                                        cx="12"
+                                        cy="8"
+                                        r="4"
+                                    ></circle>
+
+                                    <path
+                                        d="M5 21v-2a7 7 0 0 1 14 0v2"
+                                    ></path>
+
+                                </svg>
+
+                            </span>
+
+                        </div>
+
+
+                    {% endif %}
+
+
+
+                    <!-- =================================
+                         ENGLISH / HINDI SWITCH
+                         ================================= -->
+
+                    <div
+                        class="language-switch"
+                        role="group"
+                        aria-label="Choose language"
+                    >
+
+                        <button
+                            type="button"
+                            class="language-option"
+                            data-language="en"
+                            aria-pressed="true"
+                        >
+                            English
+                        </button>
+
+
+                        <span
+                            class="language-divider"
+                            aria-hidden="true"
+                        >
+                            |
+                        </span>
+
+
+                        <button
+                            type="button"
+                            class="language-option"
+                            data-language="hi"
+                            aria-pressed="false"
+                        >
+                            हिन्दी
+                        </button>
+
+                    </div>
+
+
+                </div>
+
+            </div>
+
+        </nav>
+
+    </header>
+
+
+
+    <!-- ==========================================
+         MAIN CONTENT
+         ========================================== -->
+
+    <main class="container site-main">
+
+
+        <!-- Flash messages -->
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+
+            {% if messages %}
+
+                {% for category, message in messages %}
+
+                    <div
+                        class="alert
+                        {% if category == 'error' %}
+                            alert-danger
+                        {% else %}
+                            alert-success
+                        {% endif %}"
+                        role="alert"
+                    >
+                        {{ message }}
+                    </div>
+
+                {% endfor %}
+
+            {% endif %}
+
+        {% endwith %}
+
+
+        <!-- Page-specific content -->
+
+        {% block content %}
+
+        {% endblock %}
+
+
+    </main>
+
+
+
+    <!-- ==========================================
+         FOOTER
+         ========================================== -->
+
+    <footer class="site-footer">
+
+        <div class="container footer-content">
+
+            <p class="copyright">
+                &copy; 2026 Umeed. All rights reserved.
+            </p>
+
+        </div>
+
+    </footer>
+
+
+
+    <!-- ==========================================
+         JAVASCRIPT
+         ========================================== -->
+
+    <script
+        src="{{ url_for('static', filename='js/app.js') }}"
+    ></script>
+
+
+</body>
+
+</html>

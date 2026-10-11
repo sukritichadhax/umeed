@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Relief Campaigns | Umeed{% endblock %}
+
+{% block content %}
+
+<!-- ==========================================
+     PAGE HEADING
+     ========================================== -->
+
+<section class="campaigns-heading mb-4">
+
+    <span class="badge rounded-pill mb-3">
+        Verified relief initiatives
+    </span>
+
+    <h1 class="h2 fw-bold">
+        Verified Relief Campaigns
+    </h1>
+
+    <p class="text-secondary">
+        Explore campaigns published by administrator-approved
+        relief organisations.
+    </p>
+
+</section>
+
+
+<!-- ==========================================
+     CAMPAIGN CARDS
+     ========================================== -->
+
+<section class="campaigns-section">
+
+    <div class="row g-4">
+
+        {% for campaign in campaigns %}
+
+            <div class="col-md-6 col-xxl-4">
+
+                <article class="feature-card campaign-card">
+
+                    <!-- Campaign category -->
+
+                    <span class="campaign-category">
+                        {{ campaign.emergency_type }}
+                    </span>
+
+
+                    <!-- Campaign title -->
+
+                    <h2 class="campaign-title">
+
+                        {{ campaign.title }}
+
+                    </h2>
+
+
+                    <!-- Campaign location -->
+
+                    <p class="campaign-location">
+
+                        <strong>Location:</strong>
+                        {{ campaign.location }}
+
+                    </p>
+
+
+                    <!-- Short campaign description -->
+
+                    <p class="campaign-description">
+
+                        {{ campaign.description }}
+
+                    </p>
+
+
+                    <!-- Receiving NGO -->
+
+                    <p class="campaign-organisation">
+
+                        <strong>Organised by:</strong>
+
+                        {{ campaign.ngo.name }}
+
+                    </p>
+
+
+                    <!-- Campaign actions -->
+
+                    <div class="campaign-card-actions">
+
+                        <a
+                            href="{{ url_for(
+                                'campaign_detail',
+                                campaign_id=campaign.id
+                            ) }}"
+                            class="btn btn-primary"
+                        >
+                            View more →
+                        </a>
+
+                    </div>
+
+                </article>
+
+            </div>
+
+        {% else %}
+
+            <!-- Empty state -->
+
+            <div class="col-12">
+
+                <div class="feature-card campaign-empty-state">
+
+                    <h2 class="h4">
+                        No active campaigns yet
+                    </h2>
+
+                    <p class="text-secondary mb-0">
+                        Approved relief campaigns will appear here
+                        when organisations publish their requests.
+                    </p>
+
+                </div>
+
+            </div>
+
+        {% endfor %}
+
+    </div>
+
+</section>
+
+{% endblock %}

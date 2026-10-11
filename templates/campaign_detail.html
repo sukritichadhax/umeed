@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}{{ campaign.title }} | Umeed{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+
+    <div class="col-lg-9">
+
+        <article class="feature-card">
+
+            <!-- Campaign status -->
+
+            <span class="badge text-bg-success mb-3">
+                Verified campaign
+            </span>
+
+            <p class="text-secondary mb-2">
+                {{ campaign.emergency_type }}
+            </p>
+
+            <h1 class="h2 mb-3">
+                {{ campaign.title }}
+            </h1>
+
+            <p class="text-secondary">
+                <strong>Location:</strong>
+                {{ campaign.location }}
+            </p>
+
+            <hr>
+
+            <!-- Campaign description -->
+
+            <h2 class="h5 mt-4">
+                About this campaign
+            </h2>
+
+            <p>
+                {{ campaign.description }}
+            </p>
+
+
+            <!-- Required supplies -->
+
+            <h2 class="h5 mt-4">
+                Required supplies
+            </h2>
+
+            <div class="requirements-list">
+                {{ campaign.required_items }}
+            </div>
+
+
+            <!-- Receiving organisation -->
+
+            <h2 class="h5 mt-4">
+                Receiving organisation
+            </h2>
+
+            <p class="mb-1">
+                <strong>{{ campaign.ngo.name }}</strong>
+            </p>
+
+            <p class="text-secondary">
+                {{ campaign.ngo.location }}
+            </p>
+
+
+            <!-- Verification timestamp -->
+
+            <p class="small text-secondary mt-4">
+                Requirements last recorded as verified:
+
+                {{ campaign.last_verified_at.strftime(
+                    "%d %b %Y, %I:%M %p"
+                ) }}
+            </p>
+
+
+            <hr class="my-4">
+
+
+            <!-- Donation action for donors -->
+
+            {% if current_user.is_authenticated
+                  and current_user.role == "donor" %}
+
+                <h2 class="h5">
+                    Contribute supplies
+                </h2>
+
+                <p class="text-secondary">
+                    Register the items you intend to donate.
+                    The receiving NGO will record the quantities
+                    actually received and accepted.
+                </p>
+
+                <a
+                    href="{{ url_for(
+                        'donate_to_campaign',
+                        campaign_id=campaign.id
+                    ) }}"
+                    class="btn btn-primary mt-2"
+                >
+                    Donate supplies
+                </a>
+
+
+            <!-- Action for visitors who are not signed in -->
+
+            {% elif not current_user.is_authenticated %}
+
+                <h2 class="h5">
+                    Want to contribute?
+                </h2>
+
+                <p class="text-secondary">
+                    Sign in or create a donor account to register
+                    a donation for this campaign.
+                </p>
+
+                <a
+                    href="{{ url_for('login') }}"
+                    class="btn btn-primary mt-2"
+                >
+                    Sign in to donate
+                </a>
+
+                <a
+                    href="{{ url_for('register') }}"
+                    class="btn btn-outline-secondary mt-2 ms-2"
+                >
+                    Create account
+                </a>
+
+
+            <!-- Message for other authenticated roles -->
+
+            {% elif current_user.role == "ngo_staff" %}
+
+                <p class="text-secondary mt-3">
+                    You are signed in as an NGO representative.
+                    Use your NGO Workspace to manage donations
+                    and campaigns.
+                </p>
+
+                <a
+                    href="{{ url_for('dashboard') }}"
+                    class="btn btn-outline-primary"
+                >
+                    Open NGO Workspace
+                </a>
+
+
+            {% elif current_user.role == "admin" %}
+
+                <p class="text-secondary mt-3">
+                    You are signed in as a platform administrator.
+                </p>
+
+                <a
+                    href="{{ url_for('dashboard') }}"
+                    class="btn btn-outline-primary"
+                >
+                    Open Admin Panel
+                </a>
+
+            {% endif %}
+
+
+            <!-- Return to campaign list -->
+
+            <div class="mt-4">
+
+                <a
+                    href="{{ url_for('campaigns') }}"
+                    class="btn btn-outline-secondary"
+                >
+                    Back to campaigns
+                </a>
+
+            </div>
+
+        </article>
+
+    </div>
+
+</div>
+
+{% endblock %}

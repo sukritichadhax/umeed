@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Verify Donation | Umeed{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+
+    <div class="col-lg-10">
+
+        <div class="feature-card">
+
+            <h1 class="h2">Verify donation receipt</h1>
+
+            <p class="text-secondary">
+                Donation ID: <strong>{{ donation.code }}</strong>
+            </p>
+
+            <p>
+                Compare the declared quantities against the actual
+                quantities received and accepted.
+            </p>
+
+            <form method="post">
+
+                <div class="table-responsive">
+
+                    <table class="table align-middle">
+
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Declared</th>
+                                <th>Received</th>
+                                <th>Accepted</th>
+                                <th>Reason for rejection</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+
+                            {% for item in donation.items %}
+
+                                <tr>
+
+                                    <td>
+                                        <strong>{{ item.item_name }}</strong>
+
+                                        <div class="small text-secondary">
+                                            Condition reported:
+                                            {{ item.condition | replace("_", " ") | title }}
+                                        </div>
+                                    </td>
+
+                                    <td>{{ item.declared_qty }}</td>
+
+                                    <td>
+                                        <label
+                                            class="visually-hidden"
+                                            for="received-{{ item.id }}"
+                                        >
+                                            Received quantity for {{ item.item_name }}
+                                        </label>
+
+                                        <input
+                                            id="received-{{ item.id }}"
+                                            name="received_{{ item.id }}"
+                                            type="number"
+                                            min="0"
+                                            max="10000"
+                                            class="form-control"
+                                            value="{{ item.received_qty if item.received_qty is not none else item.declared_qty }}"
+                                            {% if read_only %}readonly{% endif %}
+                                            required
+                                        >
+                                    </td>
+
+                                    <td>
+                                        <label
+                                            class="visually-hidden"
+                                            for="accepted-{{ item.id }}"
+                                        >
+                                            Accepted quantity for {{ item.item_name }}
+                                        </label>
+
+                                        <input
+                                            id="accepted-{{ item.id }}"
+                                            name="accepted_{{ item.id }}"
+                                            type="number"
+                                            min="0"
+                                            max="10000"
+                                            class="form-control"
+                                            value="{{ item.accepted_qty if item.accepted_qty is not none else item.declared_qty }}"
+                                            {% if read_only %}readonly{% endif %}
+                                            required
+                                        >
+                                    </td>
+
+                                    <td>
+                                        <label
+                                            class="visually-hidden"
+                                            for="reason-{{ item.id }}"
+                                        >
+                                            Rejection reason for {{ item.item_name }}
+                                        </label>
+
+                                        <input
+                                            id="reason-{{ item.id }}"
+                                            name="reason_{{ item.id }}"
+                                            class="form-control"
+                                            maxlength="250"
+                                            value="{{ item.rejection_reason or '' }}"
+                                            placeholder="Required if items are rejected"
+                                            {% if read_only %}readonly{% endif %}
+                                        >
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+                {% if not read_only %}
+
+                    <button type="submit" class="btn btn-primary">
+                        Confirm receipt
+                    </button>
+
+                {% else %}
+
+                    <div class="alert alert-success" role="status">
+                        This donation has already been verified.
+                    </div>
+
+                {% endif %}
+
+                <a
+                    href="{{ url_for('ngo_donations') }}"
+                    class="btn btn-outline-secondary ms-2"
+                >
+                    Back to incoming donations
+                </a>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,803 @@
+{% extends "base.html" %}
+
+{% block title %}Umeed | Donate with confidence{% endblock %}
+
+{% block content %}
+
+
+<!-- ==========================================
+     ROLE-BASED HERO SECTION
+     ========================================== -->
+
+<section class="hero p-4 p-md-5 rounded-4">
+
+
+    <!-- ======================================
+         VISITOR HERO
+         ====================================== -->
+
+    {% if not current_user.is_authenticated %}
+
+        <span
+            class="badge rounded-pill mb-3"
+            data-en="Welcome to Umeed"
+            data-hi="उम्मीद में आपका स्वागत है"
+        >
+            Welcome to Umeed
+        </span>
+
+
+        <h1 class="display-5 fw-bold">
+
+            <span
+                data-en="A little help."
+                data-hi="थोड़ी सी मदद।"
+            >
+                A little help.
+            </span>
+
+            <br>
+
+            <span
+                data-en="A little more hope."
+                data-hi="थोड़ी और उम्मीद।"
+            >
+                A little more hope.
+            </span>
+
+        </h1>
+
+
+        <p
+            class="lead mt-3"
+            data-en="When an emergency turns everyday life upside down, even simple supplies can make a meaningful difference. Umeed connects people who want to help with relief campaigns and makes physical donations easier to follow, from the quantities received to the items accepted by the receiving organisation."
+            data-hi="जब कोई आपात स्थिति रोज़मर्रा की ज़िंदगी बदल देती है, तब साधारण आवश्यक सामग्री भी बड़ा बदलाव ला सकती है। उम्मीद मदद करने के इच्छुक लोगों को राहत अभियानों से जोड़ता है और प्राप्त सामग्री से लेकर स्वीकार की गई वस्तुओं तक, भौतिक दान का रिकॉर्ड देखने में मदद करता है।"
+        >
+            When an emergency turns everyday life upside down, even simple
+            supplies can make a meaningful difference. Umeed connects people
+            who want to help with relief campaigns and makes physical donations
+            easier to follow, from the quantities received to the items accepted
+            by the receiving organisation.
+        </p>
+
+        <!-- No buttons inside the visitor hero -->
+
+
+    <!-- ======================================
+         DONOR HERO
+         ====================================== -->
+
+    {% elif current_user.role == "donor" %}
+
+        <span
+            class="badge rounded-pill mb-3"
+            data-en="For every helping hand"
+            data-hi="हर मदद करने वाले के लिए"
+        >
+            For every helping hand
+        </span>
+
+
+        <h1 class="display-5 fw-bold">
+
+            <span
+                data-en="Your kindness."
+                data-hi="आपकी दयालुता।"
+            >
+                Your kindness.
+            </span>
+
+            <br>
+
+            <span
+                data-en="Their hope."
+                data-hi="उनकी उम्मीद।"
+            >
+                Their hope.
+            </span>
+
+        </h1>
+
+
+        <p
+            class="lead mt-3"
+            data-en="Sometimes, help begins with something as simple as a blanket, a hygiene kit, or a box of essential supplies. Find a relief campaign that matters to you, contribute what you can, and keep a record of what the receiving organisation reports. With Umeed, your contribution has a story you can follow beyond the moment you give."
+            data-hi="कभी-कभी मदद एक कंबल, स्वच्छता किट या आवश्यक सामग्री के डिब्बे से शुरू होती है। अपने लिए महत्वपूर्ण राहत अभियान चुनें, अपनी क्षमता के अनुसार योगदान दें और प्राप्त संगठन द्वारा दर्ज जानकारी देखें। उम्मीद के साथ, आप अपने योगदान की कहानी दान करने के बाद भी देख सकते हैं।"
+        >
+            Sometimes, help begins with something as simple as a blanket,
+            a hygiene kit, or a box of essential supplies. Find a relief
+            campaign that matters to you, contribute what you can, and keep
+            a record of what the receiving organisation reports. With Umeed,
+            your contribution has a story you can follow beyond the moment
+            you give.
+        </p>
+
+        <!-- No buttons inside the donor hero -->
+
+
+    <!-- ======================================
+         NGO REPRESENTATIVE HERO
+         ====================================== -->
+
+    {% elif current_user.role == "ngo_staff" %}
+
+
+        {% if current_user.ngo
+              and current_user.ngo.status == "approved" %}
+
+
+            <span
+                class="badge rounded-pill mb-3"
+                data-en="NGO workspace"
+                data-hi="NGO कार्यक्षेत्र"
+            >
+                NGO workspace
+            </span>
+
+
+            <h1 class="display-5 fw-bold">
+
+                <span
+                    data-en="Relief begins with readiness."
+                    data-hi="राहत की शुरुआत तैयारी से होती है।"
+                >
+                    Relief begins with readiness.
+                </span>
+
+            </h1>
+
+
+            <p
+                class="lead mt-3"
+                data-en="Welcome, {{ current_user.ngo.name }}. Coordinate incoming supplies, keep accurate receipt records, and share your current relief needs with donors. Every carefully recorded contribution helps your team work with greater clarity."
+                data-hi="स्वागत है, {{ current_user.ngo.name }}। प्राप्त सामग्री का प्रबंधन करें, सही रिकॉर्ड रखें और दाताओं को अपनी वर्तमान आवश्यकताएँ बताएँ। हर सही रिकॉर्ड आपके संगठन को बेहतर तरीके से काम करने में मदद करता है।"
+            >
+                Welcome, {{ current_user.ngo.name }}. Coordinate incoming
+                supplies, keep accurate receipt records, and share your
+                current relief needs with donors. Every carefully recorded
+                contribution helps your team work with greater clarity.
+            </p>
+
+            <!-- No buttons inside the NGO hero -->
+
+
+        {% else %}
+
+
+            <span
+                class="badge rounded-pill mb-3"
+                data-en="NGO registration"
+                data-hi="NGO पंजीकरण"
+            >
+                NGO registration
+            </span>
+
+
+            <h1 class="display-5 fw-bold">
+
+                <span
+                    data-en="Your organisation."
+                    data-hi="आपका संगठन।"
+                >
+                    Your organisation.
+                </span>
+
+                <br>
+
+                <span
+                    data-en="Your next step."
+                    data-hi="आपका अगला कदम।"
+                >
+                    Your next step.
+                </span>
+
+            </h1>
+
+
+            <p
+                class="lead mt-3"
+                data-en="Welcome to Umeed. Your organisation's registration is awaiting approval. Once approved, you can manage donations and publish relief campaigns."
+                data-hi="उम्मीद में आपका स्वागत है। आपके संगठन का पंजीकरण स्वीकृति की प्रतीक्षा में है। स्वीकृति मिलने के बाद आप दान प्रबंधित कर सकेंगे और राहत अभियान प्रकाशित कर सकेंगे।"
+            >
+                Welcome to Umeed. Your organisation's registration is awaiting
+                approval. Once approved, you can manage donations and publish
+                relief campaigns.
+            </p>
+
+
+        {% endif %}
+
+
+    {% endif %}
+
+</section>
+
+
+<!-- ==========================================
+     ROLE-BASED QUICK ACTION CARDS
+
+     Administrators use the Admin Panel instead.
+     ========================================== -->
+
+{% if not current_user.is_authenticated
+      or current_user.role != "admin" %}
+
+
+<section id="quick-actions" class="py-5">
+
+
+    <!-- ======================================
+         VISITOR CARDS
+         ====================================== -->
+
+    {% if not current_user.is_authenticated %}
+
+
+        <h2
+            class="h2 fw-bold"
+            data-en="Every contribution matters."
+            data-hi="हर योगदान महत्वपूर्ण है।"
+        >
+            Every contribution matters.
+        </h2>
+
+
+        <p
+            class="text-secondary"
+            data-en="Discover relief campaigns or create an account to start contributing."
+            data-hi="राहत अभियान देखें या योगदान देने के लिए खाता बनाएँ।"
+        >
+            Discover relief campaigns or create an account to start contributing.
+        </p>
+
+
+        <div class="row g-4 mt-3">
+
+
+            <!-- Browse relief campaigns -->
+
+            <div class="col-md-4">
+
+                <a
+                    href="{{ url_for('campaigns') }}"
+                    class="feature-card feature-card-link"
+                >
+
+                    <span class="action-card-label">
+                        01
+                    </span>
+
+
+                    <h3
+                        class="h4"
+                        data-en="Browse relief campaigns"
+                        data-hi="राहत अभियान खोजें"
+                    >
+                        Browse relief campaigns
+                    </h3>
+
+
+                    <p
+                        data-en="Explore campaigns requesting essential supplies during emergencies."
+                        data-hi="आपात स्थितियों में आवश्यक सामग्री माँगने वाले अभियानों को देखें।"
+                    >
+                        Explore campaigns requesting essential supplies
+                        during emergencies.
+                    </p>
+
+
+                    <span
+                        class="action-card-link-text"
+                        data-en="Explore campaigns →"
+                        data-hi="अभियान देखें →"
+                    >
+                        Explore campaigns →
+                    </span>
+
+                </a>
+
+            </div>
+
+
+            <!-- Create an account -->
+
+            <div class="col-md-4">
+
+                <a
+                    href="{{ url_for('register') }}"
+                    class="feature-card feature-card-link"
+                >
+
+                    <span class="action-card-label">
+                        02
+                    </span>
+
+
+                    <h3
+                        class="h4"
+                        data-en="Become a donor"
+                        data-hi="दाता बनें"
+                    >
+                        Become a donor
+                    </h3>
+
+
+                    <p
+                        data-en="Create an account to register physical donations and track their records."
+                        data-hi="भौतिक दान दर्ज करने और उनका रिकॉर्ड देखने के लिए खाता बनाएँ।"
+                    >
+                        Create an account to register physical donations
+                        and track their records.
+                    </p>
+
+
+                    <span
+                        class="action-card-link-text"
+                        data-en="Create account →"
+                        data-hi="खाता बनाएँ →"
+                    >
+                        Create account →
+                    </span>
+
+                </a>
+
+            </div>
+
+
+            <!-- Sign in -->
+
+            <div class="col-md-4">
+
+                <a
+                    href="{{ url_for('login') }}"
+                    class="feature-card feature-card-link"
+                >
+
+                    <span class="action-card-label">
+                        03
+                    </span>
+
+
+                    <h3
+                        class="h4"
+                        data-en="Already registered?"
+                        data-hi="पहले से पंजीकृत हैं?"
+                    >
+                        Already registered?
+                    </h3>
+
+
+                    <p
+                        data-en="Sign in to access your donations or organisation workspace."
+                        data-hi="अपने दान या संगठन के कार्यक्षेत्र तक पहुँचने के लिए लॉग इन करें।"
+                    >
+                        Sign in to access your donations or
+                        organisation workspace.
+                    </p>
+
+
+                    <span
+                        class="action-card-link-text"
+                        data-en="Sign in →"
+                        data-hi="लॉग इन करें →"
+                    >
+                        Sign in →
+                    </span>
+
+                </a>
+
+            </div>
+
+        </div>
+
+
+    <!-- ======================================
+         DONOR CARDS
+         ====================================== -->
+
+    {% elif current_user.role == "donor" %}
+
+
+        <h2
+            class="h2 fw-bold"
+            data-en="Make your contribution count."
+            data-hi="अपने योगदान को सार्थक बनाएँ।"
+        >
+            Make your contribution count.
+        </h2>
+
+
+        <p
+            class="text-secondary"
+            data-en="Find supplies to donate and track what happens after your donation reaches the NGO."
+            data-hi="दान करने के लिए सामग्री खोजें और NGO तक पहुँचने के बाद अपने दान की स्थिति देखें।"
+        >
+            Find supplies to donate and track what happens after your
+            donation reaches the NGO.
+        </p>
+
+
+        <div class="row g-4 mt-3">
+
+
+            <!-- Donate supplies -->
+
+            <div class="col-md-6">
+
+                <a
+                    href="{{ url_for('campaigns') }}"
+                    class="feature-card feature-card-link"
+                >
+
+                    <span class="action-card-label">
+                        01
+                    </span>
+
+
+                    <h3
+                        class="h4"
+                        data-en="Donate supplies"
+                        data-hi="सामग्री दान करें"
+                    >
+                        Donate supplies
+                    </h3>
+
+
+                    <p
+                        data-en="Explore active campaigns and choose the supplies you want to contribute."
+                        data-hi="सक्रिय अभियान देखें और योगदान देने के लिए सामग्री चुनें।"
+                    >
+                        Explore active campaigns and choose the supplies
+                        you want to contribute.
+                    </p>
+
+
+                    <span
+                        class="action-card-link-text"
+                        data-en="Find campaigns →"
+                        data-hi="अभियान खोजें →"
+                    >
+                        Find campaigns →
+                    </span>
+
+                </a>
+
+            </div>
+
+
+            <!-- My donations -->
+
+            <div class="col-md-6">
+
+                <a
+                    href="{{ url_for('dashboard') }}"
+                    class="feature-card feature-card-link"
+                >
+
+                    <span class="action-card-label">
+                        02
+                    </span>
+
+
+                    <h3
+                        class="h4"
+                        data-en="My donations"
+                        data-hi="मेरे दान"
+                    >
+                        My donations
+                    </h3>
+
+
+                    <p
+                        data-en="View your donation history, QR codes, accepted quantities, and rejection reasons."
+                        data-hi="अपने दान का इतिहास, QR कोड, स्वीकृत मात्रा और अस्वीकृति के कारण देखें।"
+                    >
+                        View your donation history, QR codes, accepted
+                        quantities, and rejection reasons.
+                    </p>
+
+
+                    <span
+                        class="action-card-link-text"
+                        data-en="View my donations →"
+                        data-hi="मेरे दान देखें →"
+                    >
+                        View my donations →
+                    </span>
+
+                </a>
+
+            </div>
+
+        </div>
+
+
+    <!-- ======================================
+         NGO REPRESENTATIVE CARDS
+         ====================================== -->
+
+    {% elif current_user.role == "ngo_staff" %}
+
+
+        {% if current_user.ngo
+              and current_user.ngo.status == "approved" %}
+
+
+            <h2
+                class="h2 fw-bold"
+                data-en="Your relief operations workspace."
+                data-hi="आपका राहत कार्यक्षेत्र।"
+            >
+                Your relief operations workspace.
+            </h2>
+
+
+            <p
+                class="text-secondary"
+                data-en="Manage incoming donations, record walk-in contributions, and publish relief campaigns."
+                data-hi="प्राप्त दान प्रबंधित करें, सीधे लाए गए दान दर्ज करें और राहत अभियान प्रकाशित करें।"
+            >
+                Manage incoming donations, record walk-in contributions,
+                and publish relief campaigns.
+            </p>
+
+
+            <div class="row g-4 mt-3">
+
+
+                <!-- Manage donations -->
+
+                <div class="col-md-4">
+
+                    <a
+                        href="{{ url_for('ngo_donations') }}"
+                        class="feature-card feature-card-link"
+                    >
+
+                        <span class="action-card-label">
+                            01
+                        </span>
+
+
+                        <h3
+                            class="h4"
+                            data-en="Manage donations"
+                            data-hi="दान प्रबंधित करें"
+                        >
+                            Manage donations
+                        </h3>
+
+
+                        <p
+                            data-en="Accept offers, scan QR codes, and verify the quantities received."
+                            data-hi="दान प्रस्ताव स्वीकार करें, QR कोड स्कैन करें और प्राप्त मात्रा सत्यापित करें।"
+                        >
+                            Accept offers, scan QR codes, and verify
+                            the quantities received.
+                        </p>
+
+
+                        <span
+                            class="action-card-link-text"
+                            data-en="Open donations →"
+                            data-hi="दान खोलें →"
+                        >
+                            Open donations →
+                        </span>
+
+                    </a>
+
+                </div>
+
+
+                <!-- Offline donations -->
+
+                <div class="col-md-4">
+
+                    <a
+                        href="{{ url_for('offline_donation') }}"
+                        class="feature-card feature-card-link"
+                    >
+
+                        <span class="action-card-label">
+                            02
+                        </span>
+
+
+                        <h3
+                            class="h4"
+                            data-en="Register offline donations"
+                            data-hi="ऑफलाइन दान दर्ज करें"
+                        >
+                            Register offline donations
+                        </h3>
+
+
+                        <p
+                            data-en="Record supplies brought directly to your collection centre and generate QR labels."
+                            data-hi="संग्रह केंद्र पर सीधे पहुँची सामग्री दर्ज करें और QR लेबल बनाएँ।"
+                        >
+                            Record supplies brought directly to your collection
+                            centre and generate QR labels.
+                        </p>
+
+
+                        <span
+                            class="action-card-link-text"
+                            data-en="Register donation →"
+                            data-hi="दान दर्ज करें →"
+                        >
+                            Register donation →
+                        </span>
+
+                    </a>
+
+                </div>
+
+
+                <!-- Campaign management -->
+
+                <div class="col-md-4">
+
+                    <a
+                        href="{{ url_for('ngo_campaigns') }}"
+                        class="feature-card feature-card-link"
+                    >
+
+                        <span class="action-card-label">
+                            03
+                        </span>
+
+
+                        <h3
+                            class="h4"
+                            data-en="Our campaigns"
+                            data-hi="हमारे अभियान"
+                        >
+                            Our campaigns
+                        </h3>
+
+
+                        <p
+                            data-en="Review campaign status, manage active relief initiatives, and close campaigns when they are no longer needed."
+                            data-hi="अभियानों की स्थिति देखें, राहत पहलों को प्रबंधित करें और आवश्यकता समाप्त होने पर अभियान बंद करें।"
+                        >
+                            Review campaign status, manage active relief
+                            initiatives, and close campaigns when they are
+                            no longer needed.
+                        </p>
+
+
+                        <span
+                            class="action-card-link-text"
+                            data-en="Manage campaigns →"
+                            data-hi="अभियान प्रबंधित करें →"
+                        >
+                            Manage campaigns →
+                        </span>
+
+                    </a>
+
+                </div>
+
+            </div>
+
+
+        {% else %}
+
+
+            <h2
+                class="h2 fw-bold"
+                data-en="Complete your NGO verification."
+                data-hi="अपने NGO का सत्यापन पूरा करें।"
+            >
+                Complete your NGO verification.
+            </h2>
+
+
+            <p
+                class="text-secondary"
+                data-en="Your organisation must be approved before you can publish campaigns or manage donations. Check your registration status for updates."
+                data-hi="अभियान प्रकाशित करने या दान प्रबंधित करने से पहले आपके संगठन की स्वीकृति आवश्यक है। अपडेट के लिए पंजीकरण की स्थिति देखें।"
+            >
+                Your organisation must be approved before you can publish
+                campaigns or manage donations. Check your registration
+                status for updates.
+            </p>
+
+
+            <div class="row g-4 mt-3">
+
+
+                <!-- Registration status -->
+
+                <div class="col-md-6">
+
+                    <a
+                        href="{{ url_for('dashboard') }}"
+                        class="feature-card feature-card-link"
+                    >
+
+                        <h3
+                            class="h4"
+                            data-en="Check registration status"
+                            data-hi="पंजीकरण की स्थिति देखें"
+                        >
+                            Check registration status
+                        </h3>
+
+
+                        <p
+                            data-en="View your organisation's verification and approval status."
+                            data-hi="अपने संगठन की सत्यापन और स्वीकृति की स्थिति देखें।"
+                        >
+                            View your organisation's verification and
+                            approval status.
+                        </p>
+
+
+                        <span
+                            class="action-card-link-text"
+                            data-en="View status →"
+                            data-hi="स्थिति देखें →"
+                        >
+                            View status →
+                        </span>
+
+                    </a>
+
+                </div>
+
+
+                <!-- Explore public campaigns -->
+
+                <div class="col-md-6">
+
+                    <a
+                        href="{{ url_for('campaigns') }}"
+                        class="feature-card feature-card-link"
+                    >
+
+                        <h3
+                            class="h4"
+                            data-en="Explore relief campaigns"
+                            data-hi="राहत अभियान देखें"
+                        >
+                            Explore relief campaigns
+                        </h3>
+
+
+                        <p
+                            data-en="See how active campaigns present their supply requirements."
+                            data-hi="देखें कि सक्रिय अभियान अपनी सामग्री आवश्यकताएँ कैसे बताते हैं।"
+                        >
+                            See how active campaigns present their
+                            supply requirements.
+                        </p>
+
+
+                        <span
+                            class="action-card-link-text"
+                            data-en="Browse campaigns →"
+                            data-hi="अभियान देखें →"
+                        >
+                            Browse campaigns →
+                        </span>
+
+                    </a>
+
+                </div>
+
+            </div>
+
+
+        {% endif %}
+
+
+    {% endif %}
+
+</section>
+
+{% endif %}
+
+{% endblock %}

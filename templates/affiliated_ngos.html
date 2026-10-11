@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Affiliated NGOs | Umeed{% endblock %}
+
+{% block content %}
+
+<section class="campaigns-heading mb-4">
+
+    <span class="badge rounded-pill mb-3">
+        The organisations behind the relief
+    </span>
+
+    <h1 class="h2 fw-bold">Affiliated NGOs</h1>
+
+    <p class="text-secondary">
+        Get to know the organisations participating in Umeed, understand
+        the work they describe, and explore their current relief campaigns.
+    </p>
+
+    <!-- This button shows campaigns from ALL NGOs -->
+    <a href="{{ url_for('campaigns') }}" class="btn btn-primary mt-3">
+        Explore campaigns
+    </a>
+
+</section>
+
+<section class="campaigns-section">
+
+    <div class="row g-4">
+
+        {% for ngo in ngos %}
+
+        <div class="col-md-6 col-xxl-4">
+
+            <article class="feature-card campaign-card">
+
+                <h2 class="campaign-title">{{ ngo.name }}</h2>
+
+                <p class="campaign-location">
+                    <strong>Location:</strong>
+
+                    {% if ngo.location %}
+                        {{ ngo.location }}
+                    {% else %}
+                        Not provided
+                    {% endif %}
+                </p>
+
+                <div class="ngo-profile-description">
+
+                    {% if ngo.description and ngo.description.strip() %}
+
+                        <p class="ngo-description-text">
+                            {{ ngo.description }}
+                        </p>
+
+                    {% else %}
+
+                        <p class="text-secondary">
+                            This organisation has not added a profile description yet.
+                        </p>
+
+                    {% endif %}
+
+                </div>
+
+                <div class="campaign-card-actions">
+
+                    <!-- This button shows campaigns from THIS NGO only -->
+                    <a
+                        href="{{ url_for('campaigns', ngo_id=ngo.id) }}"
+                        class="btn btn-primary"
+                    >
+                        Explore campaigns →
+                    </a>
+
+                </div>
+
+            </article>
+
+        </div>
+
+        {% else %}
+
+        <div class="col-12">
+
+            <div class="feature-card campaign-empty-state">
+
+                <h2 class="h4">No affiliated NGOs yet</h2>
+
+                <p class="text-secondary mb-0">
+                    Organisations will appear here after their registrations are approved.
+                </p>
+
+            </div>
+
+        </div>
+
+        {% endfor %}
+
+    </div>
+
+</section>
+
+{% endblock %}

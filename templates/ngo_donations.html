@@ -1,0 +1,1235 @@
+{% extends "base.html" %}
+
+{% block title %}Incoming Donations | Umeed{% endblock %}
+
+{% block content %}
+
+<style>
+    /* =====================================
+       QR SCANNER LAYOUT
+       ===================================== */
+
+    .qr-scanner-card {
+        padding: clamp(1.25rem, 3vw, 2rem);
+    }
+
+    .qr-scanner-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 1.25rem 0;
+    }
+
+    #qr-reader {
+        width: 100%;
+        max-width: 480px;
+        margin-top: 1rem;
+        overflow: hidden;
+        border-radius: 12px;
+    }
+
+    #qr-reader video {
+        max-width: 100%;
+        border-radius: 12px;
+    }
+
+    .scanner-hint {
+        margin-top: 1rem;
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+    }
+
+
+    /* =====================================
+       PERSISTENT ERROR BOX
+       ===================================== */
+
+    .scanner-feedback {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.85rem;
+
+        margin-top: 1rem;
+        padding: 1rem 1.1rem;
+
+        background: #FFF0EE;
+        color: #922D27;
+
+        border: 1px solid #E9B5AF;
+        border-left: 5px solid #C83B32;
+        border-radius: 10px;
+    }
+
+    .scanner-feedback[hidden] {
+        display: none;
+    }
+
+    .scanner-feedback-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        flex-shrink: 0;
+
+        width: 32px;
+        height: 32px;
+
+        color: #FFFFFF;
+        background: #C83B32;
+        border-radius: 50%;
+    }
+
+    .scanner-feedback-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .scanner-feedback-title {
+        margin: 0 0 0.25rem;
+        color: #922D27;
+        font-size: 0.95rem;
+        font-weight: 700;
+    }
+
+    .scanner-feedback-message {
+        margin: 0;
+        color: #80312B;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
+    }
+
+    .scanner-retry {
+        margin-top: 0.7rem;
+
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+
+        padding: 0.4rem 0.75rem;
+
+        background: #FFFFFF;
+        color: #922D27;
+
+        border: 1px solid #D9948D;
+        border-radius: 7px;
+
+        font-size: 0.85rem;
+        font-weight: 650;
+
+        cursor: pointer;
+    }
+
+    .scanner-retry:hover {
+        background: #FCE1DD;
+    }
+
+    .scanner-retry:focus-visible {
+        outline: 3px solid #C83B32;
+        outline-offset: 3px;
+    }
+
+
+    /* =====================================
+       RESPONSIVE LAYOUT
+       ===================================== */
+
+    @media (max-width: 600px) {
+
+        .qr-scanner-controls {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .qr-scanner-controls .btn {
+            width: 100%;
+        }
+
+        .scanner-feedback {
+            padding: 0.85rem;
+        }
+
+    }
+</style>
+
+
+<!-- ==========================================
+     PAGE HEADING
+     ========================================== -->
+
+<section class="mb-4">
+
+    <h1 class="h2">Incoming donations</h1>
+
+    <p class="text-secondary">
+        {{ ngo.name }} | Review donation offers and verify physical receipts.
+    </p>
+
+</section>
+
+
+<!-- ==========================================
+     QR CAMERA SCANNER AND IMAGE UPLOAD
+     ========================================== -->
+
+<section class="feature-card qr-scanner-card mb-4">
+
+    <h2 class="h4">Identify a donation</h2>
+
+    <p class="text-secondary">
+        Scan the QR code attached to a donation box or upload an image
+        of the QR code. If neither option works, enter the printed ID.
+    </p>
+
+
+    <!-- Scanner buttons -->
+
+    <div class="qr-scanner-controls">
+
+        <button
+            type="button"
+            id="startScanner"
+            class="btn btn-primary"
+        >
+            Scan QR with Camera
+        </button>
+
+        <button
+            type="button"
+            id="stopScanner"
+            class="btn btn-outline-secondary"
+            disabled
+        >
+            Stop Camera
+        </button>
+
+        <button
+            type="button"
+            id="uploadQrButton"
+            class="btn btn-outline-primary"
+        >
+            Upload QR Image
+        </button>
+
+        <input
+            type="file"
+            id="qrImageInput"
+            accept="image/*"
+            hidden
+        >
+
+    </div>
+
+
+    <!-- Camera preview -->
+
+    <div
+        id="qr-reader"
+        aria-label="QR code camera preview"
+    ></div>
+
+
+    <!-- Scanner information -->
+
+    <p
+        id="scannerHint"
+        class="scanner-hint"
+        role="status"
+        aria-live="polite"
+    >
+        Select Scan QR with Camera or Upload QR Image.
+    </p>
+
+
+    <!-- Persistent error box -->
+
+    <div
+        id="scannerFeedback"
+        class="scanner-feedback"
+        role="alert"
+        aria-live="assertive"
+        hidden
+    >
+
+        <div class="scanner-feedback-icon" aria-hidden="true">
+
+            <!-- Retry symbol -->
+
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path d="M3 11a9 9 0 0 1 15.5-6L21 7"></path>
+                <path d="M21 2v5h-5"></path>
+                <path d="M21 13a9 9 0 0 1-15.5 6L3 17"></path>
+                <path d="M3 22v-5h5"></path>
+            </svg>
+
+        </div>
+
+        <div class="scanner-feedback-content">
+
+            <h3 class="scanner-feedback-title">
+                Unable to read donation QR
+            </h3>
+
+            <p
+                id="scannerFeedbackMessage"
+                class="scanner-feedback-message"
+            ></p>
+
+            <button
+                type="button"
+                id="scannerRetry"
+                class="scanner-retry"
+            >
+
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                >
+                    <path d="M3 11a9 9 0 0 1 15.5-6L21 7"></path>
+                    <path d="M21 2v5h-5"></path>
+                </svg>
+
+                Try again
+
+            </button>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- ==========================================
+     MANUAL DONATION ID LOOKUP
+     ========================================== -->
+
+<section class="feature-card mb-4">
+
+    <h2 class="h4">Find a donation using its printed ID</h2>
+
+    <p class="text-secondary">
+        Enter the donation ID printed on the box or label if you cannot
+        scan the QR code or upload a readable image.
+    </p>
+
+    <form
+        action="{{ url_for('lookup_donation') }}"
+        method="get"
+        class="row g-3 align-items-end"
+    >
+
+        <div class="col-md-8">
+
+            <label
+                for="donationCode"
+                class="form-label"
+            >
+                Donation ID
+            </label>
+
+            <input
+                id="donationCode"
+                name="code"
+                type="text"
+                class="form-control"
+                maxlength="30"
+                placeholder="Example: UM-DA873DFDD705FD21"
+                autocomplete="off"
+                required
+            >
+
+        </div>
+
+        <div class="col-md-4">
+
+            <button
+                type="submit"
+                class="btn btn-primary w-100"
+            >
+                Find donation
+            </button>
+
+        </div>
+
+    </form>
+
+</section>
+
+
+<!-- ==========================================
+     DONATION RECORDS
+     ========================================== -->
+
+<section class="feature-card">
+
+    <h2 class="h4 mb-3">Donation records</h2>
+
+    {% if donations %}
+
+        <div class="table-responsive">
+
+            <table class="table align-middle">
+
+                <thead>
+                    <tr>
+                        <th>Donation ID</th>
+                        <th>Source</th>
+                        <th>Campaign</th>
+                        <th>Status</th>
+                        <th>Registered</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for donation in donations %}
+
+                        <tr>
+
+                            <td>
+                                <strong>{{ donation.code }}</strong>
+                            </td>
+
+                            <td>
+                                {{ donation.source | title }}
+                            </td>
+
+                            <td>
+
+                                {% if donation.campaign %}
+
+                                    {{ donation.campaign.title }}
+
+                                {% else %}
+
+                                    General donation
+
+                                {% endif %}
+
+                            </td>
+
+                            <td>
+                                {{ donation.status
+                                   | replace("_", " ")
+                                   | title }}
+                            </td>
+
+                            <td>
+                                {{ donation.created_at.strftime("%d %b %Y") }}
+                            </td>
+
+                            <td>
+
+                                <div class="d-flex flex-wrap gap-2">
+
+                                    {% if donation.status == "offered" %}
+
+                                        <form
+                                            method="post"
+                                            action="{{ url_for(
+                                                'accept_donation_offer',
+                                                code=donation.code
+                                            ) }}"
+                                        >
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-success btn-sm"
+                                            >
+                                                Accept offer
+                                            </button>
+
+                                        </form>
+
+                                    {% endif %}
+
+
+                                    {% if donation.status in [
+                                        "offered",
+                                        "accepted",
+                                        "received"
+                                    ] %}
+
+                                        <a
+                                            class="btn btn-primary btn-sm"
+                                            href="{{ url_for(
+                                                'verify_donation',
+                                                code=donation.code
+                                            ) }}"
+                                        >
+                                            Verify receipt
+                                        </a>
+
+                                    {% endif %}
+
+
+                                    <a
+                                        class="btn btn-outline-secondary btn-sm"
+                                        href="{{ url_for(
+                                            'donation_passport',
+                                            code=donation.code
+                                        ) }}"
+                                    >
+                                        View record
+                                    </a>
+
+                                </div>
+
+                            </td>
+
+                        </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    {% else %}
+
+        <p class="text-secondary mb-0">
+            No donations have been registered yet.
+        </p>
+
+    {% endif %}
+
+</section>
+
+
+<!-- ==========================================
+     QR SCANNER LIBRARY
+     ========================================== -->
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+
+<!-- ==========================================
+     CAMERA AND IMAGE SCANNING LOGIC
+     ========================================== -->
+
+<script>
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    const startButton = document.getElementById("startScanner");
+    const stopButton = document.getElementById("stopScanner");
+    const uploadButton = document.getElementById("uploadQrButton");
+    const imageInput = document.getElementById("qrImageInput");
+
+    const scannerHint = document.getElementById("scannerHint");
+    const scannerFeedback = document.getElementById("scannerFeedback");
+    const scannerFeedbackMessage = document.getElementById("scannerFeedbackMessage");
+    const retryButton = document.getElementById("scannerRetry");
+
+    let activeScanner = null;
+    let cameraRunning = false;
+    let operationRunning = false;
+    let scanHandled = false;
+    let lastMode = "upload";
+
+
+    // =====================================
+    // ERROR BOX
+    // =====================================
+
+    function showError(message) {
+
+        scannerFeedbackMessage.textContent = message;
+
+        scannerFeedback.hidden = false;
+
+    }
+
+
+    function clearError() {
+
+        scannerFeedback.hidden = true;
+
+        scannerFeedbackMessage.textContent = "";
+
+    }
+
+
+    // =====================================
+    // RECOGNISE UMEED DONATION CODES ONLY
+    // =====================================
+
+    function extractDonationCode(scannedText) {
+
+        const value = scannedText.trim();
+
+        /*
+         * Generated Umeed IDs contain 16 hexadecimal characters
+         * after the UM- prefix.
+         */
+
+        const directMatch = value.match(
+            /^UM-([A-F0-9]{16})$/i
+        );
+
+        if (directMatch) {
+
+            return "UM-" + directMatch[1].toUpperCase();
+
+        }
+
+
+        /*
+         * Generated QR codes contain a URL with a path like:
+         * /scan/UM-DA873DFDD705FD21
+         */
+
+        try {
+
+            const scannedUrl = new URL(
+                value,
+                window.location.origin
+            );
+
+            const urlMatch = scannedUrl.pathname.match(
+                /^\/scan\/UM-([A-F0-9]{16})\/?$/i
+            );
+
+            if (urlMatch) {
+
+                return "UM-" + urlMatch[1].toUpperCase();
+
+            }
+
+        } catch (error) {
+
+            console.warn("Could not parse QR contents.", error);
+
+        }
+
+
+        return null;
+
+    }
+
+
+    // =====================================
+    // STOP AND CLEAN UP SCANNER
+    // =====================================
+
+    async function disposeScanner() {
+
+        const oldScanner = activeScanner;
+
+        activeScanner = null;
+
+        cameraRunning = false;
+        document.getElementById("qr-reader").classList.remove("scanner-active");
+
+
+        if (!oldScanner) {
+
+            return;
+
+        }
+
+
+        try {
+
+            await oldScanner.stop();
+
+        } catch (error) {
+
+            /*
+             * Expected for an image-only scanner or a camera
+             * that failed to start.
+             */
+
+        }
+
+
+        try {
+
+            await oldScanner.clear();
+
+        } catch (error) {
+
+            console.warn("Scanner cleanup warning:", error);
+
+        }
+
+    }
+
+
+    // =====================================
+    // OPEN THE DONATION RECORD
+    // =====================================
+
+    async function openDonation(code) {
+
+        if (scanHandled) {
+
+            return;
+
+        }
+
+        scanHandled = true;
+
+        clearError();
+
+        scannerHint.textContent =
+            "Umeed donation recognised. Opening the record...";
+
+
+        await disposeScanner();
+
+
+        /*
+         * Navigate to Umeed's own lookup route.
+         * Never redirect to an arbitrary URL from a QR code.
+         */
+
+        window.location.href =
+            window.location.origin
+            + "/ngo/donations/lookup?code="
+            + encodeURIComponent(code);
+
+    }
+
+
+    // =====================================
+    // HANDLE A DECODED QR
+    // =====================================
+
+    async function handleDecodedQR(decodedText, source) {
+
+        if (scanHandled) {
+
+            return;
+
+        }
+
+        clearError();
+
+        const donationCode = extractDonationCode(decodedText);
+
+
+        if (!donationCode) {
+
+            scannerHint.textContent =
+                source === "camera"
+                    ? "Still scanning. Hold a Umeed donation QR inside the frame."
+                    : "Upload a Umeed donation QR or enter its printed ID.";
+
+            showError(
+                "This QR code is not recognised as a Umeed donation code. " +
+                "Try another QR code or use the printed donation ID."
+            );
+
+            return;
+
+        }
+
+
+        await openDonation(donationCode);
+
+    }
+
+
+    // =====================================
+    // START CAMERA SCANNER
+    // =====================================
+
+async function startCamera() {
+
+    if (operationRunning || cameraRunning) {
+        return;
+    }
+
+    operationRunning = true;
+    scanHandled = false;
+    lastMode = "camera";
+
+    clearError();
+
+    scannerHint.textContent =
+        "Detecting your laptop camera...";
+
+    startButton.disabled = true;
+    uploadButton.disabled = true;
+    stopButton.disabled = true;
+
+    try {
+
+        // Check that the QR-scanning library loaded.
+
+        if (!window.Html5Qrcode) {
+
+            throw new Error(
+                "The QR scanner library failed to load. Check your internet connection."
+            );
+
+        }
+
+
+        // Clean up any previous scanner.
+
+        await disposeScanner();
+
+
+        // Ask the browser which cameras are available.
+
+        const cameras = await Html5Qrcode.getCameras();
+
+
+        if (!cameras || cameras.length === 0) {
+
+            throw new Error(
+                "No camera was detected. Check your browser permissions."
+            );
+
+        }
+
+
+        // Prefer the integrated webcam on a laptop.
+
+        const selectedCamera =
+            cameras.find(camera =>
+                /integrated|webcam|built.?in/i.test(camera.label)
+            ) || cameras[0];
+
+
+        scannerHint.textContent =
+            "Opening " +
+            (selectedCamera.label || "your camera") +
+            "...";
+
+
+        // Start the scanner using the actual camera ID.
+
+        activeScanner = new Html5Qrcode("qr-reader");
+
+
+        await activeScanner.start(
+
+            selectedCamera.id,
+
+            {
+                fps: 10,
+
+                qrbox: {
+                    width: 250,
+                    height: 250
+                },
+
+                aspectRatio: 1.0
+            },
+
+            async (decodedText) => {
+
+                await handleDecodedQR(decodedText, "camera");
+
+            },
+
+            () => {
+
+                // Ignore video frames without a readable QR code.
+
+            }
+
+        );
+
+
+        // Camera started successfully.
+
+        cameraRunning = true; 
+        startButton.disabled = true;
+        stopButton.disabled = false;
+        uploadButton.disabled = false;
+
+        // Show the white QR scanning corners.
+
+        document.getElementById("qr-reader").classList.add(
+        "scanner-active"
+        );
+
+        scannerHint.textContent =
+        "Camera active. Hold the donation QR code inside the four white corners.";
+
+
+    } catch (error) {
+
+        console.error(
+            "Umeed camera startup error:",
+            error
+        );
+
+
+        // Release the camera if startup failed.
+
+        await disposeScanner();
+
+
+        cameraRunning = false;
+
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        uploadButton.disabled = false;
+
+
+        scannerHint.textContent =
+            "Camera unavailable. Upload a QR image or enter the printed donation ID.";
+
+
+        // Keep the error visible inside the scanner card.
+
+        showError(
+            "Could not start the camera. " +
+            (error.message || "Check camera permissions and try again.")
+        );
+
+
+    } finally {
+
+        operationRunning = false;
+
+    }
+
+}
+
+
+    // =====================================
+    // OPEN FILE PICKER
+    // =====================================
+
+    uploadButton.addEventListener("click", async () => {
+
+        if (operationRunning) {
+
+            return;
+
+        }
+
+        operationRunning = true;
+
+        lastMode = "upload";
+
+        scanHandled = false;
+
+        clearError();
+
+
+        try {
+
+            // Stop the camera before switching to image scanning.
+
+            await disposeScanner();
+
+            scannerHint.textContent =
+                "Choose an image containing a Umeed donation QR code.";
+
+            imageInput.click();
+
+        } finally {
+
+            operationRunning = false;
+
+        }
+
+    });
+
+
+    // =====================================
+    // READ UPLOADED QR IMAGE
+    // =====================================
+
+    imageInput.addEventListener("change", async () => {
+
+        const file = imageInput.files[0];
+
+        if (!file) {
+
+            return;
+
+        }
+
+        lastMode = "upload";
+
+        scanHandled = false;
+
+        clearError();
+
+
+        if (!file.type.startsWith("image/")) {
+
+            showError(
+                "That file is not an image. Select a JPG, PNG, or another supported image file."
+            );
+
+            imageInput.value = "";
+
+            return;
+
+        }
+
+
+        if (file.size > 10 * 1024 * 1024) {
+
+            showError(
+                "This image exceeds 10 MB. Select a smaller QR image and try again."
+            );
+
+            imageInput.value = "";
+
+            return;
+
+        }
+
+
+        if (operationRunning) {
+
+            imageInput.value = "";
+
+            return;
+
+        }
+
+
+        operationRunning = true;
+
+        startButton.disabled = true;
+        uploadButton.disabled = true;
+        stopButton.disabled = true;
+
+        scannerHint.textContent =
+            "Reading the uploaded image...";
+
+
+        let imageScanner = null;
+
+
+        try {
+
+            await disposeScanner();
+
+
+            if (!window.Html5Qrcode) {
+
+                throw new Error(
+                    "The QR scanner library did not load. Check your internet connection."
+                );
+
+            }
+
+
+            imageScanner = new Html5Qrcode("qr-reader");
+
+            activeScanner = imageScanner;
+
+
+            const decodedText = await imageScanner.scanFile(
+                file,
+                true
+            );
+
+
+            // Remove the temporary image scanner.
+
+            await disposeScanner();
+
+            imageScanner = null;
+
+
+            await handleDecodedQR(decodedText, "upload");
+
+
+        } catch (error) {
+
+            console.error(
+                "Uploaded QR image could not be read:",
+                error
+            );
+
+
+            await disposeScanner();
+
+
+            scannerHint.textContent =
+                "Upload another QR image or enter the printed donation ID.";
+
+
+            showError(
+                "No readable QR code was found in this image. " +
+                "Try a clearer image with the entire QR code visible."
+            );
+
+
+        } finally {
+
+            operationRunning = false;
+
+            imageInput.value = "";
+
+
+            if (!scanHandled) {
+
+                startButton.disabled = false;
+                uploadButton.disabled = false;
+                stopButton.disabled = true;
+
+            }
+
+        }
+
+    });
+
+
+    // =====================================
+    // STOP CAMERA BUTTON
+    // =====================================
+
+    stopButton.addEventListener("click", async () => {
+
+        if (operationRunning) {
+
+            return;
+
+        }
+
+        operationRunning = true;
+
+        await disposeScanner();
+
+        scanHandled = false;
+
+        clearError();
+
+        scannerHint.textContent =
+            "Camera stopped. You can restart scanning or upload an image.";
+
+        startButton.disabled = false;
+        uploadButton.disabled = false;
+        stopButton.disabled = true;
+
+        operationRunning = false;
+
+    });
+
+
+    // =====================================
+    // RETRY BUTTON
+    // =====================================
+
+    retryButton.addEventListener("click", async () => {
+
+        clearError();
+
+
+        if (lastMode === "camera") {
+
+            /*
+             * If the previous attempt used the camera,
+             * restart the camera scanner.
+             */
+
+            await disposeScanner();
+
+            startButton.disabled = false;
+
+            await startCamera();
+
+        } else {
+
+            /*
+             * If the previous attempt used an uploaded image,
+             * reopen the file picker.
+             */
+
+            imageInput.click();
+
+        }
+
+    });
+
+// ======================================
+// CONNECT SCANNER BUTTONS
+// ======================================
+
+startButton.addEventListener("click", startCamera);
+
+// =====================================
+// STOP CAMERA BUTTON
+// =====================================
+
+stopButton.addEventListener("click", async () => {
+
+    if (operationRunning) {
+        return;
+    }
+
+    operationRunning = true;
+
+    try {
+
+        // Stop the camera and release its resources.
+        await disposeScanner();
+
+        scanHandled = false;
+
+        // Remove any previous error message.
+        clearError();
+
+        // Reset the scanning frame.
+        scannerHint.textContent =
+            "Camera stopped. You can restart scanning or upload a QR image.";
+
+    } catch (error) {
+
+        console.error("Unable to stop camera:", error);
+
+        showError(
+            "The camera could not be stopped cleanly. Please try again."
+        );
+
+    } finally {
+
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        uploadButton.disabled = false;
+
+        operationRunning = false;
+
+    }
+
+});
+    // =====================================
+    // INITIAL STATE
+    // =====================================
+
+    scannerHint.textContent =
+        "Choose camera scanning, upload a QR image, or enter the printed donation ID.";
+
+});
+
+</script>
+
+{% endblock %}

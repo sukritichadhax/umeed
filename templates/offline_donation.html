@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Register Walk-in Donation | Umeed{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+
+    <div class="col-lg-9">
+
+        <div class="feature-card">
+
+            <h1 class="h2">Register an offline donation</h1>
+
+            <p class="text-secondary">
+                Use this form when a donor brings items directly to
+                your collection centre without registering online.
+            </p>
+
+            <form method="post">
+
+                <div class="mb-4">
+
+                    <label for="campaign_id" class="form-label">
+                        Link to an active campaign (optional)
+                    </label>
+
+                    <select
+                        name="campaign_id"
+                        id="campaign_id"
+                        class="form-select"
+                    >
+
+                        <option value="">
+                            General donation to this NGO
+                        </option>
+
+                        {% for campaign in campaigns %}
+
+                            <option value="{{ campaign.id }}">
+                                {{ campaign.title }}
+                            </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                </div>
+
+                <h2 class="h5">Items received for initial registration</h2>
+
+                <div id="offlineItemRows">
+
+                    <div class="offline-item-row row g-2 mb-3">
+
+                        <div class="col-md-5">
+                            <label class="form-label">Item name</label>
+
+                            <input
+                                name="item_name"
+                                class="form-control"
+                                maxlength="120"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Declared quantity</label>
+
+                            <input
+                                name="declared_qty"
+                                type="number"
+                                min="1"
+                                max="10000"
+                                class="form-control"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Condition reported</label>
+
+                            <select
+                                name="condition"
+                                class="form-select"
+                                required
+                            >
+                                <option value="good">Good</option>
+                                <option value="usable">Usable</option>
+                                <option value="needs_review">Needs review</option>
+                            </select>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <button
+                    type="button"
+                    id="addOfflineItem"
+                    class="btn btn-outline-secondary btn-sm mb-4"
+                >
+                    + Add another item
+                </button>
+
+                <div class="mb-4">
+
+                    <label for="notes" class="form-label">
+                        Notes (optional)
+                    </label>
+
+                    <textarea
+                        name="notes"
+                        id="notes"
+                        class="form-control"
+                        rows="2"
+                        maxlength="1000"
+                    ></textarea>
+
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    Register and generate QR
+                </button>
+
+                <a
+                    href="{{ url_for('dashboard') }}"
+                    class="btn btn-outline-secondary ms-2"
+                >
+                    Cancel
+                </a>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+    const offlineItemRows = document.getElementById("offlineItemRows");
+
+    document.getElementById("addOfflineItem").addEventListener(
+        "click",
+        () => {
+
+            if (offlineItemRows.children.length >= 10) {
+                alert("You can add a maximum of 10 item types.");
+                return;
+            }
+
+            const row = document.createElement("div");
+
+            row.className = "offline-item-row row g-2 mb-3";
+
+            row.innerHTML = `
+                <div class="col-md-5">
+                    <label class="form-label">Item name</label>
+                    <input
+                        name="item_name"
+                        class="form-control"
+                        maxlength="120"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Declared quantity</label>
+                    <input
+                        name="declared_qty"
+                        type="number"
+                        min="1"
+                        max="10000"
+                        class="form-control"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Condition reported</label>
+                    <select name="condition" class="form-select" required>
+                        <option value="good">Good</option>
+                        <option value="usable">Usable</option>
+                        <option value="needs_review">Needs review</option>
+                    </select>
+                </div>
+
+                <div class="col-12">
+                    <button
+                        type="button"
+                        class="btn btn-link text-danger remove-offline-item"
+                    >
+                        Remove item
+                    </button>
+                </div>
+            `;
+
+            offlineItemRows.appendChild(row);
+
+        }
+    );
+
+    offlineItemRows.addEventListener("click", (event) => {
+
+        if (event.target.classList.contains("remove-offline-item")) {
+            event.target.closest(".offline-item-row").remove();
+        }
+
+    });
+</script>
+
+{% endblock %}

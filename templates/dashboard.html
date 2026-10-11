@@ -1,0 +1,798 @@
+{% extends "base.html" %}
+
+{% block title %}Workspace | Umeed{% endblock %}
+
+{% block content %}
+
+
+<!-- =====================================
+     ADMINISTRATOR DASHBOARD
+     ===================================== -->
+
+{% if dashboard_type == "admin" %}
+
+    <section class="mb-4">
+
+        <span class="badge text-bg-primary mb-2">
+            Platform Administration
+        </span>
+
+        <h1 class="h2">
+            Administrator dashboard
+        </h1>
+
+        <p class="text-secondary">
+            Review NGO registrations and approve campaigns
+            before they become visible to donors.
+        </p>
+
+    </section>
+
+
+    <!-- NGOs awaiting approval -->
+
+    <section class="feature-card mb-4">
+
+        <h2 class="h4 mb-3">
+            NGOs awaiting approval
+        </h2>
+
+        {% if pending_ngos %}
+
+            <div class="table-responsive">
+
+                <table class="table align-middle">
+
+                    <thead>
+                        <tr>
+                            <th>Organisation</th>
+                            <th>Contact email</th>
+                            <th>Location</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for ngo in pending_ngos %}
+
+                            <tr>
+
+                                <td>
+                                    <strong>{{ ngo.name }}</strong>
+                                </td>
+
+                                <td>
+                                    {{ ngo.email }}
+                                </td>
+
+                                <td>
+                                    {{ ngo.location }}
+                                </td>
+
+                                <td>
+
+                                    <div class="d-flex flex-wrap gap-2">
+
+                                        <form
+                                            action="{{ url_for(
+                                                'approve_ngo',
+                                                ngo_id=ngo.id
+                                            ) }}"
+                                            method="post"
+                                        >
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-success btn-sm"
+                                            >
+                                                Approve
+                                            </button>
+
+                                        </form>
+
+
+                                        <form
+                                            action="{{ url_for(
+                                                'reject_ngo',
+                                                ngo_id=ngo.id
+                                            ) }}"
+                                            method="post"
+                                        >
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-outline-danger btn-sm"
+                                            >
+                                                Reject
+                                            </button>
+
+                                        </form>
+
+                                    </div>
+
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <p class="text-secondary mb-0">
+                No NGOs are awaiting approval.
+            </p>
+
+        {% endif %}
+
+    </section>
+
+
+    <!-- Campaigns awaiting approval -->
+
+    <section class="feature-card mb-4">
+
+        <h2 class="h4 mb-3">
+            Campaigns awaiting approval
+        </h2>
+
+        {% if pending_campaigns %}
+
+            <div class="table-responsive">
+
+                <table class="table align-middle">
+
+                    <thead>
+                        <tr>
+                            <th>Campaign</th>
+                            <th>Organisation</th>
+                            <th>Category</th>
+                            <th>Location</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for campaign in pending_campaigns %}
+
+                            <tr>
+
+                                <td>
+                                    <strong>{{ campaign.title }}</strong>
+                                </td>
+
+                                <td>
+                                    {{ campaign.ngo.name }}
+                                </td>
+
+                                <td>
+                                    {{ campaign.emergency_type }}
+                                </td>
+
+                                <td>
+                                    {{ campaign.location }}
+                                </td>
+
+                                <td>
+
+                                    <div class="d-flex flex-wrap gap-2">
+
+                                        <form
+                                            action="{{ url_for(
+                                                'approve_campaign',
+                                                campaign_id=campaign.id
+                                            ) }}"
+                                            method="post"
+                                        >
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-success btn-sm"
+                                            >
+                                                Approve
+                                            </button>
+
+                                        </form>
+
+
+                                        <form
+                                            action="{{ url_for(
+                                                'reject_campaign',
+                                                campaign_id=campaign.id
+                                            ) }}"
+                                            method="post"
+                                        >
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-outline-danger btn-sm"
+                                            >
+                                                Reject
+                                            </button>
+
+                                        </form>
+
+                                    </div>
+
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <p class="text-secondary mb-0">
+                No campaigns are awaiting approval.
+            </p>
+
+        {% endif %}
+
+    </section>
+
+
+
+<!-- =====================================
+     NGO AWAITING APPROVAL
+     ===================================== -->
+
+{% elif dashboard_type == "ngo_pending" %}
+
+    <section class="feature-card">
+
+        {% if ngo and ngo.status == "rejected" %}
+
+            <span class="badge text-bg-danger mb-3">
+                Registration not approved
+            </span>
+
+            <h1 class="h2">
+                NGO registration not approved
+            </h1>
+
+            <p class="text-secondary">
+                Your organisation's registration has not been approved.
+                Please contact the platform administrator for clarification.
+            </p>
+
+        {% else %}
+
+            <span class="badge text-bg-warning mb-3">
+                Verification pending
+            </span>
+
+            <h1 class="h2">
+                Welcome to Umeed
+            </h1>
+
+            <p class="text-secondary">
+                Your NGO registration is awaiting administrator approval.
+                Once approved, you will be able to create campaigns
+                and manage donations.
+            </p>
+
+        {% endif %}
+
+        {% if ngo %}
+
+            <div class="mt-4">
+
+                <h2 class="h5">
+                    Organisation details
+                </h2>
+
+                <p class="mb-1">
+                    <strong>Name:</strong> {{ ngo.name }}
+                </p>
+
+                <p class="mb-1">
+                    <strong>Location:</strong> {{ ngo.location }}
+                </p>
+
+                <p class="mb-0">
+                    <strong>Status:</strong>
+                    {{ ngo.status | title }}
+                </p>
+
+            </div>
+
+        {% endif %}
+
+    </section>
+
+
+
+<!-- =====================================
+     APPROVED NGO DASHBOARD
+     ===================================== -->
+
+{% elif dashboard_type == "ngo" %}
+
+    <section class="mb-4">
+
+        <span class="badge text-bg-success mb-2">
+            Verified organisation
+        </span>
+
+        <h1 class="h2">
+            {{ ngo.name }}
+        </h1>
+
+        <p class="text-secondary">
+            NGO Workspace | Manage campaigns, record physical donations,
+            and verify the quantities received.
+        </p>
+
+    </section>
+
+
+    <!-- Main NGO actions -->
+
+    <section class="row g-3 mb-4">
+
+        <div class="col-md-4">
+
+            <div class="feature-card">
+
+                <h2 class="h5">
+                    Manage donations
+                </h2>
+
+                <p class="text-secondary">
+                    Review incoming offers and verify donation receipts.
+                </p>
+
+                <a
+                    href="{{ url_for('ngo_donations') }}"
+                    class="btn btn-primary mt-2"
+                >
+                    Open donations
+                </a>
+
+            </div>
+
+        </div>
+
+
+        <div class="col-md-4">
+
+            <div class="feature-card">
+
+                <h2 class="h5">
+                    Offline donations
+                </h2>
+
+                <p class="text-secondary">
+                    Register goods brought directly to your collection centre.
+                </p>
+
+                <a
+                    href="{{ url_for('offline_donation') }}"
+                    class="btn btn-primary mt-2"
+                >
+                    Register donation
+                </a>
+
+            </div>
+
+        </div>
+
+
+        <div class="col-md-4">
+
+            <div class="feature-card">
+
+                <h2 class="h5">
+                    Campaign management
+                </h2>
+
+                <p class="text-secondary">
+                    Publish new relief requests for administrator approval.
+                </p>
+
+                <a
+                    href="{{ url_for('create_campaign') }}"
+                    class="btn btn-primary mt-2"
+                >
+                    Create campaign
+                </a>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- NGO campaigns -->
+
+    <section class="feature-card mb-4">
+
+        <h2 class="h4 mb-3">
+            Your campaigns
+        </h2>
+
+        {% if campaigns %}
+
+            <div class="table-responsive">
+
+                <table class="table align-middle">
+
+                    <thead>
+                        <tr>
+                            <th>Campaign</th>
+                            <th>Category</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for campaign in campaigns %}
+
+                            <tr>
+
+                                <td>
+                                    {% if campaign.status == "active" %}
+
+                                        <a
+                                            href="{{ url_for(
+                                                'campaign_detail',
+                                                campaign_id=campaign.id
+                                            ) }}"
+                                        >
+                                            {{ campaign.title }}
+                                        </a>
+
+                                    {% else %}
+
+                                        {{ campaign.title }}
+
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {{ campaign.emergency_type }}
+                                </td>
+
+                                <td>
+                                    {{ campaign.location }}
+                                </td>
+
+                                <td>
+
+                                    {% if campaign.status == "active" %}
+
+                                        <span class="badge text-bg-success">
+                                            Active
+                                        </span>
+
+                                    {% elif campaign.status == "pending" %}
+
+                                        <span class="badge text-bg-warning">
+                                            Awaiting approval
+                                        </span>
+
+                                    {% else %}
+
+                                        <span class="badge text-bg-secondary">
+                                            {{ campaign.status | title }}
+                                        </span>
+
+                                    {% endif %}
+
+                                </td>
+
+                                <td>
+                                    {{ campaign.created_at.strftime("%d %b %Y") }}
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <p class="text-secondary mb-0">
+                You have not created any campaigns yet.
+            </p>
+
+        {% endif %}
+
+    </section>
+
+
+    <!-- Recent NGO donations -->
+
+    <section class="feature-card mb-4">
+
+        <h2 class="h4 mb-3">
+            Recent donations
+        </h2>
+
+        {% if donations %}
+
+            <div class="table-responsive">
+
+                <table class="table align-middle">
+
+                    <thead>
+                        <tr>
+                            <th>Donation ID</th>
+                            <th>Source</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for donation in donations %}
+
+                            <tr>
+
+                                <td>
+                                    <strong>{{ donation.code }}</strong>
+                                </td>
+
+                                <td>
+                                    {{ donation.source | title }}
+                                </td>
+
+                                <td>
+                                    {{ donation.status
+                                       | replace("_", " ")
+                                       | title }}
+                                </td>
+
+                                <td>
+                                    {{ donation.created_at.strftime("%d %b %Y") }}
+                                </td>
+
+                                <td>
+
+                                    {% if donation.status in [
+                                        "offered",
+                                        "accepted",
+                                        "received"
+                                    ] %}
+
+                                        <a
+                                            href="{{ url_for(
+                                                'verify_donation',
+                                                code=donation.code
+                                            ) }}"
+                                            class="btn btn-primary btn-sm"
+                                        >
+                                            Verify receipt
+                                        </a>
+
+                                    {% else %}
+
+                                        <a
+                                            href="{{ url_for(
+                                                'donation_passport',
+                                                code=donation.code
+                                            ) }}"
+                                            class="btn btn-outline-secondary btn-sm"
+                                        >
+                                            View record
+                                        </a>
+
+                                    {% endif %}
+
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <p class="text-secondary mb-0">
+                No donations have been registered yet.
+            </p>
+
+        {% endif %}
+
+    </section>
+
+
+
+<!-- =====================================
+     DONOR DASHBOARD
+     ===================================== -->
+
+{% elif dashboard_type == "donor" %}
+
+    <section class="mb-4">
+
+        <span class="badge rounded-pill mb-2"
+              style="background-color: var(--orange-soft); color: var(--blue-dark);">
+            Donor Workspace
+        </span>
+
+        <h1 class="h2">
+            My Donations
+        </h1>
+
+        <p class="text-secondary">
+            View your registered donations, verified receipts,
+            discrepancies, and recorded processing updates.
+        </p>
+
+        <a
+            href="{{ url_for('campaigns') }}"
+            class="btn btn-primary mt-2"
+        >
+            Find relief campaigns
+        </a>
+
+    </section>
+
+
+    <!-- Donor's donation history -->
+
+    <section class="feature-card">
+
+        <h2 class="h4 mb-3">
+            My donation history
+        </h2>
+
+        {% if donations %}
+
+            <div class="table-responsive">
+
+                <table class="table align-middle">
+
+                    <thead>
+                        <tr>
+                            <th>Donation ID</th>
+                            <th>Campaign</th>
+                            <th>Source</th>
+                            <th>Status</th>
+                            <th>Registered</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for donation in donations %}
+
+                            <tr>
+
+                                <td>
+                                    <strong>{{ donation.code }}</strong>
+                                </td>
+
+                                <td>
+                                    {% if donation.campaign %}
+                                        {{ donation.campaign.title }}
+                                    {% else %}
+                                        General donation
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {{ donation.source | title }}
+                                </td>
+
+                                <td>
+
+                                    {% if donation.status == "verified" %}
+
+                                        <span class="badge text-bg-success">
+                                            Verified
+                                        </span>
+
+                                    {% elif donation.status == "cancelled" %}
+
+                                        <span class="badge text-bg-secondary">
+                                            Cancelled
+                                        </span>
+
+                                    {% elif donation.status == "rejected" %}
+
+                                        <span class="badge text-bg-danger">
+                                            Rejected
+                                        </span>
+
+                                    {% else %}
+
+                                        <span class="badge text-bg-warning">
+                                            {{ donation.status
+                                               | replace("_", " ")
+                                               | title }}
+                                        </span>
+
+                                    {% endif %}
+
+                                </td>
+
+                                <td>
+                                    {{ donation.created_at.strftime("%d %b %Y") }}
+                                </td>
+
+                                <td>
+
+                                    <a
+                                        href="{{ url_for(
+                                            'donation_passport',
+                                            code=donation.code
+                                        ) }}"
+                                        class="btn btn-primary btn-sm"
+                                    >
+                                        View passport
+                                    </a>
+
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <div class="py-3">
+
+                <h3 class="h5">
+                    You have not registered any donations yet.
+                </h3>
+
+                <p class="text-secondary">
+                    Browse verified relief campaigns to find
+                    supplies you can contribute.
+                </p>
+
+                <a
+                    href="{{ url_for('campaigns') }}"
+                    class="btn btn-primary"
+                >
+                    Explore campaigns
+                </a>
+
+            </div>
+
+        {% endif %}
+
+    </section>
+
+
+{% endif %}
+
+{% endblock %}

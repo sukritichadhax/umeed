@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Register | Umeed{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="feature-card">
+            <h1 class="h2 mb-2">Create your account</h1>
+            <p class="text-secondary mb-4">
+                Join Umeed to contribute supplies or manage an NGO.
+            </p>
+
+            <form method="post" id="register-form">
+
+                <div class="mb-3">
+                    <label for="name" class="form-label">Your name</label>
+                    <input
+                        id="name"
+                        name="name"
+                        type="text"
+                        class="form-control"
+                        required
+                        maxlength="120"
+                        autocomplete="name"
+                        value="{{ request.form.get('name', '') }}"
+                    >
+                </div>
+
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email address</label>
+                    <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        class="form-control"
+                        required
+                        maxlength="254"
+                        autocomplete="email"
+                        value="{{ request.form.get('email', '') }}"
+                    >
+                </div>
+
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        class="form-control"
+                        minlength="8"
+                        required
+                        autocomplete="new-password"
+                    >
+                    <div class="form-text">
+                        Use at least 8 characters.
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="account_type" class="form-label">
+                        Account type
+                    </label>
+
+                    <select
+                        id="account_type"
+                        name="account_type"
+                        class="form-select"
+                        required
+                    >
+                        <option value="donor"
+                            {% if request.form.get('account_type', 'donor') == 'donor' %}selected{% endif %}>
+                            Donor
+                        </option>
+                        <option value="ngo"
+                            {% if request.form.get('account_type') == 'ngo' %}selected{% endif %}>
+                            NGO representative
+                        </option>
+                    </select>
+                </div>
+
+                <!-- NGO fields only appear when NGO representative is selected. -->
+
+                <div id="ngo-fields" hidden>
+
+                    <div class="mb-3">
+                        <label for="ngo_name" class="form-label">
+                            NGO name
+                        </label>
+                        <input
+                            id="ngo_name"
+                            name="ngo_name"
+                            type="text"
+                            class="form-control"
+                            maxlength="180"
+                            value="{{ request.form.get('ngo_name', '') }}"
+                            placeholder="Enter your organisation's name"
+                        >
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="ngo_location" class="form-label">
+                            NGO location
+                        </label>
+                        <input
+                            id="ngo_location"
+                            name="ngo_location"
+                            type="text"
+                            class="form-control"
+                            maxlength="180"
+                            value="{{ request.form.get('ngo_location', '') }}"
+                            placeholder="City, state"
+                        >
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="ngo_description" class="form-label">
+                            About your organisation
+                        </label>
+                        <textarea
+                            id="ngo_description"
+                            name="ngo_description"
+                            class="form-control"
+                            rows="4"
+                            maxlength="600"
+                            placeholder="Briefly describe your relief work, the communities you support, and the assistance you provide."
+                        >{{ request.form.get('ngo_description', '') }}</textarea>
+                        <div class="form-text">
+                            Maximum 600 characters. This description will appear on the Affiliated NGOs page after approval.
+                        </div>
+                    </div>
+
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    Create account
+                </button>
+            </form>
+
+            <p class="mt-4 mb-0">
+                Already registered?
+                <a href="{{ url_for('login') }}">Sign in</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+
+        const accountType = document.getElementById("account_type");
+        const ngoFields = document.getElementById("ngo-fields");
+
+        const ngoName = document.getElementById("ngo_name");
+        const ngoLocation = document.getElementById("ngo_location");
+        const ngoDescription = document.getElementById("ngo_description");
+
+        function updateNgoFields() {
+
+            const isNgo = accountType.value === "ngo";
+
+            ngoFields.hidden = !isNgo;
+
+            [ngoName, ngoLocation, ngoDescription].forEach(function (field) {
+                field.required = isNgo;
+                field.disabled = !isNgo;
+            });
+
+        }
+
+        accountType.addEventListener("change", updateNgoFields);
+        updateNgoFields();
+
+    });
+</script>
+{% endblock %}

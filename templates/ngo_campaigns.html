@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Our Campaigns | Umeed{% endblock %}
+
+{% block content %}
+
+<!-- ==========================================
+     PAGE HEADING
+     ========================================== -->
+
+<section class="campaigns-heading mb-4">
+
+    <span class="badge rounded-pill mb-3">
+        NGO workspace
+    </span>
+
+    <h1 class="h2 fw-bold">
+        Our Campaigns
+    </h1>
+
+    <p class="text-secondary">
+        Manage your relief initiatives, monitor approval status,
+        and close campaigns when their requirements have been met
+        or the response is no longer needed.
+    </p>
+
+    <div class="d-flex flex-wrap gap-2 mt-3">
+
+        <a
+            href="{{ url_for('create_campaign') }}"
+            class="btn btn-primary"
+        >
+            Create campaign
+        </a>
+
+        <a
+            href="{{ url_for('edit_ngo_profile') }}"
+            class="btn btn-primary"
+        >
+            Edit NGO Profile
+        </a>
+
+    </div>
+
+</section>
+
+
+<!-- ==========================================
+     CAMPAIGN CARDS
+     ========================================== -->
+
+<section class="campaigns-section">
+
+    <div class="row g-4">
+
+        {% for campaign in campaigns %}
+
+            <div class="col-md-6 col-xxl-4">
+
+                <article class="feature-card campaign-card">
+
+                    <span class="campaign-category">
+                        {{ campaign.emergency_type }}
+                    </span>
+
+                    <h2 class="campaign-title">
+                        {{ campaign.title }}
+                    </h2>
+
+                    <p class="campaign-location">
+                        <strong>Location:</strong>
+                        {{ campaign.location }}
+                    </p>
+
+                    <p class="campaign-description">
+                        {{ campaign.description }}
+                    </p>
+
+                    <p>
+                        <strong>Status:</strong>
+
+                        {% if campaign.status == "active" %}
+
+                            <span class="text-success">
+                                Active
+                            </span>
+
+                        {% elif campaign.status == "pending" %}
+
+                            <span class="text-warning">
+                                Awaiting approval
+                            </span>
+
+                        {% elif campaign.status == "closed" %}
+
+                            <span class="text-secondary">
+                                Closed
+                            </span>
+
+                        {% elif campaign.status == "rejected" %}
+
+                            <span class="text-danger">
+                                Rejected
+                            </span>
+
+                        {% else %}
+
+                            {{ campaign.status | replace("_", " ") | title }}
+
+                        {% endif %}
+
+                    </p>
+
+
+                    <!-- Campaign actions -->
+
+                    <div class="campaign-card-actions">
+
+                        {% if campaign.status == "active" %}
+
+                            <form
+                                method="post"
+                                action="{{ url_for(
+                                    'close_campaign',
+                                    campaign_id=campaign.id
+                                ) }}"
+                                onsubmit="return confirm(
+                                    'Close this campaign? It will no longer appear in the public campaign list.'
+                                );"
+                            >
+
+                                <button
+                                    type="submit"
+                                    class="btn btn-outline-danger"
+                                >
+                                    Close campaign
+                                </button>
+
+                            </form>
+
+                        {% elif campaign.status == "closed" %}
+
+                            <p class="small text-secondary mb-0">
+                                This campaign is no longer publicly listed.
+                            </p>
+
+                        {% elif campaign.status == "pending" %}
+
+                            <p class="small text-secondary mb-0">
+                                This campaign is awaiting administrator approval.
+                            </p>
+
+                        {% elif campaign.status == "rejected" %}
+
+                            <p class="small text-secondary mb-0">
+                                This campaign was not approved.
+                            </p>
+
+                        {% endif %}
+
+                    </div>
+
+                </article>
+
+            </div>
+
+        {% else %}
+
+            <div class="col-12">
+
+                <div class="feature-card campaign-empty-state">
+
+                    <h2 class="h4">
+                        No campaigns yet
+                    </h2>
+
+                    <p class="text-secondary">
+                        Create your first relief campaign to publish
+                        your organisation's current supply requirements.
+                    </p>
+
+                    <a
+                        href="{{ url_for('create_campaign') }}"
+                        class="btn btn-primary"
+                    >
+                        Create campaign
+                    </a>
+
+                </div>
+
+            </div>
+
+        {% endfor %}
+
+    </div>
+
+</section>
+
+{% endblock %}

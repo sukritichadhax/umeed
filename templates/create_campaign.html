@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Create Campaign | Umeed{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+
+    <div class="col-lg-8">
+
+        <div class="feature-card">
+
+            <h1 class="h2">Create a relief campaign</h1>
+
+            <p class="text-secondary mb-4">
+                Provide accurate requirements so donors know
+                what your organisation needs.
+            </p>
+
+            <form method="post">
+
+                <div class="mb-3">
+
+                    <label for="title" class="form-label">
+                        Campaign title
+                    </label>
+
+                    <input
+                        id="title"
+                        name="title"
+                        class="form-control"
+                        maxlength="180"
+                        required
+                    >
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label for="emergency_type" class="form-label">
+                        Emergency type
+                    </label>
+
+                    <select
+                        id="emergency_type"
+                        name="emergency_type"
+                        class="form-select"
+                        required
+                    >
+
+                        <option value="">Select a category</option>
+                        <option value="Natural disaster">Natural disaster</option>
+                        <option value="Food insecurity">Food insecurity</option>
+                        <option value="Infrastructure collapse">
+                            Infrastructure collapse
+                        </option>
+                        <option value="Civil unrest humanitarian relief">
+                            Civil unrest humanitarian relief
+                        </option>
+                        <option value="Emergency preparedness">
+                            Emergency preparedness
+                        </option>
+                        <option value="Other humanitarian emergency">
+                            Other humanitarian emergency
+                        </option>
+
+                    </select>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label for="location" class="form-label">
+                        Location
+                    </label>
+
+                    <input
+                        id="location"
+                        name="location"
+                        class="form-control"
+                        placeholder="e.g. Ahmedabad, Gujarat"
+                        maxlength="200"
+                        required
+                    >
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label for="description" class="form-label">
+                        Campaign description
+                    </label>
+
+                    <textarea
+                        id="description"
+                        name="description"
+                        class="form-control"
+                        rows="4"
+                        required
+                    ></textarea>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label for="required_items" class="form-label">
+                        Required items and quantities
+                    </label>
+
+                    <textarea
+                        id="required_items"
+                        name="required_items"
+                        class="form-control"
+                        rows="5"
+                        placeholder="Blankets: 100&#10;Hygiene kits: 50"
+                        required
+                    ></textarea>
+
+                    <div class="form-text">
+                        Enter one item and its requested quantity per line.
+                    </div>
+
+                </div>
+
+                <button class="btn btn-primary" type="submit">
+                    Submit for approval
+                </button>
+
+                <a
+                    href="{{ url_for('dashboard') }}"
+                    class="btn btn-outline-secondary ms-2"
+                >
+                    Cancel
+                </a>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}
