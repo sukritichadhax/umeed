@@ -130,6 +130,37 @@
                         </div>
                     </div>
 
+                    <div class="mb-3">
+                        <label for="ngo_legal_form" class="form-label">Legal form</label>
+                        <select id="ngo_legal_form" name="ngo_legal_form" class="form-select">
+                            <option value="">Select organisation type</option>
+                            <option value="Registered society">Registered society</option>
+                            <option value="Public charitable trust">Public charitable trust</option>
+                            <option value="Section 8 company">Section 8 company</option>
+                            <option value="Other / to be reviewed">Other / to be reviewed</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ngo_registration_number" class="form-label">Registration reference</label>
+                        <input id="ngo_registration_number" name="ngo_registration_number"
+                               class="form-control" maxlength="120"
+                               value="{{ request.form.get('ngo_registration_number', '') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="ngo_registration_authority" class="form-label">Registration authority</label>
+                        <input id="ngo_registration_authority" name="ngo_registration_authority"
+                               class="form-control" maxlength="150"
+                               value="{{ request.form.get('ngo_registration_authority', '') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="ngo_evidence_url" class="form-label">Supporting evidence link</label>
+                        <input id="ngo_evidence_url" name="ngo_evidence_url" type="url"
+                               class="form-control" maxlength="500"
+                               placeholder="https://..."
+                               value="{{ request.form.get('ngo_evidence_url', '') }}">
+                        <div class="form-text">Use a link the reviewer can access. For fictional demo NGOs, clearly label the linked material as sample evidence.</div>
+                    </div>
+
                 </div>
 
                 <button type="submit" class="btn btn-primary">
@@ -154,6 +185,10 @@
         const ngoName = document.getElementById("ngo_name");
         const ngoLocation = document.getElementById("ngo_location");
         const ngoDescription = document.getElementById("ngo_description");
+        const ngoLegalForm = document.getElementById("ngo_legal_form");
+        const ngoRegistrationNumber = document.getElementById("ngo_registration_number");
+        const ngoRegistrationAuthority = document.getElementById("ngo_registration_authority");
+        const ngoEvidenceUrl = document.getElementById("ngo_evidence_url");
 
         function updateNgoFields() {
 
@@ -161,7 +196,10 @@
 
             ngoFields.hidden = !isNgo;
 
-            [ngoName, ngoLocation, ngoDescription].forEach(function (field) {
+            [
+                ngoName, ngoLocation, ngoDescription, ngoLegalForm,
+                ngoRegistrationNumber, ngoRegistrationAuthority, ngoEvidenceUrl
+            ].forEach(function (field) {
                 field.required = isNgo;
                 field.disabled = !isNgo;
             });

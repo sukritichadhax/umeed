@@ -44,13 +44,46 @@
 
             <!-- Required supplies -->
 
-            <h2 class="h5 mt-4">
-                Required supplies
-            </h2>
-
-            <div class="requirements-list">
-                {{ campaign.required_items }}
+            <h2 class="h5 mt-4">Current supply requirements</h2>
+            {% if inventory %}
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Required</th>
+                            <th>Accepted</th>
+                            <th>Committed / awaiting verification</th>
+                            <th>Still available</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for need in inventory %}
+                        <tr>
+                            <td>{{ need.name }}</td>
+                            <td>{{ need.required }}</td>
+                            <td>{{ need.accepted }}</td>
+                            <td>{{ need.committed }}</td>
+                            <td>
+                                {% if need.remaining > 0 %}
+                                    <span class="badge text-bg-warning">{{ need.remaining }} needed</span>
+                                {% else %}
+                                    <span class="badge text-bg-success">Target reached</span>
+                                {% endif %}
+                                {% if need.surplus > 0 %}
+                                    <div class="small text-danger">Surplus flagged: {{ need.surplus }}</div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
+            {% else %}
+            <div class="alert alert-warning">
+                The requirement list is not in the required format. The NGO should update it to use one line per item, such as “Blankets: 100”.
+            </div>
+            {% endif %}
 
 
             <!-- Receiving organisation -->
@@ -73,9 +106,7 @@
             <p class="small text-secondary mt-4">
                 Requirements last recorded as verified:
 
-                {{ campaign.last_verified_at.strftime(
-                    "%d %b %Y, %I:%M %p"
-                ) }}
+                {{ campaign.last_verified_at | ist_datetime("%d %b %Y, %I:%M %p") }}
             </p>
 
 
@@ -106,8 +137,12 @@
                 >
                     Donate supplies
                 </a>
-
-
+            
+            {% if has_open_needs %}
+                <div class="alert alert-success">Current listed requirements are already fulfilled or committed. Please check back for updates.</div>    
+            {% else %}
+            {% endif %}
+            
             <!-- Action for visitors who are not signed in -->
 
             {% elif not current_user.is_authenticated %}

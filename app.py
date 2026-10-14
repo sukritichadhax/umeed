@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import secrets
 import qrcode
+import re
 
 from sqlalchemy import inspect, text
 
@@ -299,14 +300,44 @@ def register():
                 ""
             ).strip()
 
-            if not ngo_name or not ngo_location or not ngo_description:
+            ngo_legal_form = request.form.get("ngo_legal_form", "").strip()
+            ngo_registration_number = request.form.get(
+                "ngo_registration_number", ""
+            ).strip()
+            ngo_registration_authority = request.form.get(
+                "ngo_registration_authority", ""
+            ).strip()
+            ngo_evidence_url = request.form.get("ngo_evidence_url", "").strip()
 
+            if not all([
+                ngo_name,
+                ngo_location,
+                ngo_description,
+                ngo_legal_form,
+                ngo_registration_number,
+                ngo_registration_authority,
+                ngo_evidence_url,
+            ]):
+
+             if not ngo_evidence_url.lower().startswith(("https://", "http://")):
                 flash(
-                    "NGO name, location, and description are required.",
+                    "Enter a valid HTTP/HTTPS link to the supporting evidence.",
                     "error"
                 )
 
                 return render_template("register.html"), 400
+            if (
+                len(ngo_legal_form) > 60
+                or len(ngo_registration_number) > 120
+                or len(ngo_registration_authority) > 150
+                or len(ngo_evidence_url) > 500
+            ):
+                flash("One or more NGO verification fields is too long.", "error")
+                return render_template("register.html"), 400
+                legal_form=ngo_legal_form,
+                registration_number=ngo_registration_number,
+                registration_authority=ngo_registration_authority,
+                evidence_url=ngo_evidence_url,
 
             if len(ngo_name) > 180:
 
@@ -544,17 +575,38 @@ def approve_ngo(ngo_id):
     if not ngo:
         abort(404)
 
-    ngo.status = "approved"
+    registration_checked = request.form.get("review_registration_checked") == "on"
+    address_checked = request.form.get("review_address_checked") == "on"
+    contact_checked = request.form.get("review_contact_checked") == "on"
+    review_notes = request.form.get("review_notes", "").strip()
 
+    if not all([
+        ngo.legal_form,
+        ngo.registration_number,
+        ngo.registration_authority,
+        ngo.evidence_url,
+    ]):
+        flash("This NGO has not supplied all required evidence details.", "error")
+        return redirect(url_for("dashboard"))
+
+    if not all([registration_checked, address_checked, contact_checked]):
+        flash("Complete all three verification checks before approving this NGO.", "error")
+        return redirect(url_for("dashboard"))
+
+    if not review_notes:
+        flash("Add a short note describing the basis for this review.", "error")
+        return redirect(url_for("dashboard"))
+
+    ngo.review_registration_checked = registration_checked
+    ngo.review_address_checked = address_checked
+    ngo.review_contact_checked = contact_checked
+    ngo.review_notes = review_notes[:2000]
+    ngo.reviewed_at = datetime.utcnow()
+    ngo.status = "approved"
     db.session.commit()
 
-    flash(
-        f"{ngo.name} has been approved.",
-        "success"
-    )
-
+    flash(f"{ngo.name} approved. The review checklist has been recorded.", "success")
     return redirect(url_for("dashboard"))
-
 
 @app.route(
     "/admin/ngos/<int:ngo_id>/reject",
@@ -655,9 +707,12 @@ def campaign_detail(campaign_id):
     if not campaign.ngo or campaign.ngo.status != "approved":
         abort(404)
 
+    inventory = campaign_inventory(campaign)
     return render_template(
         "campaign_detail.html",
-        campaign=campaign
+        campaign=campaign,
+        inventory=inventory,
+        has_open_needs=any(row["remaining"] > 0 for row in inventory),
     )
 
 
@@ -686,8 +741,9 @@ def create_campaign():
         "Natural disaster",
         "Food insecurity",
         "Infrastructure collapse",
-        "Civil unrest",
-        "Emergency preparedness"
+        "Civil unrest humanitarian relief",
+        "Emergency preparedness",
+        "Other humanitarian emergency",
     ]
 
     if request.method == "POST":
@@ -717,6 +773,10 @@ def create_campaign():
             ""
         ).strip()
 
+        evidence_summary = request.form.get("evidence_summary", "").strip()
+        evidence_url = request.form.get("evidence_url", "").strip()
+        needs_source = request.form.get("needs_source", "").strip()
+
         if not all([
             title,
             emergency_type,
@@ -739,7 +799,17 @@ def create_campaign():
 
         else:
 
-            campaign = Campaign(
+         if not evidence_url.lower().startswith(("https://", "http://")):
+                flash("Enter a valid HTTP/HTTPS link for campaign evidence.", "error")
+                return render_template("create_campaign.html", emergency_types=emergency_types), 400
+
+        try:
+                parse_campaign_requirements(required_items)
+        except ValueError as error:
+                flash(str(error), "error")
+                return render_template("create_campaign.html", emergency_types=emergency_types), 400
+        
+        campaign = Campaign (
                 title=title,
                 emergency_type=emergency_type,
                 location=location,
@@ -747,19 +817,22 @@ def create_campaign():
                 required_items=required_items,
                 status="pending",
                 ngo_id=ngo.id,
-                last_verified_at=datetime.utcnow()
+                last_verified_at=datetime.utcnow(),
+                evidence_summary=evidence_summary,
+                evidence_url=evidence_url,
+                needs_source=needs_source
             )
 
-            db.session.add(campaign)
+        db.session.add(campaign)
 
-            db.session.commit()
+        db.session.commit()
 
-            flash(
+        flash(
                 "Campaign submitted for administrator approval.",
                 "success"
             )
 
-            return redirect(url_for("dashboard"))
+        return redirect(url_for("dashboard"))
 
     return render_template(
         "create_campaign.html",
@@ -789,24 +862,50 @@ def approve_campaign(campaign_id):
         abort(404)
 
     if not campaign.ngo or campaign.ngo.status != "approved":
-
-        flash(
-            "The organisation must be approved first.",
-            "error"
-        )
-
+        flash("The organisation must be approved first.", "error")
         return redirect(url_for("dashboard"))
 
+    location_checked = request.form.get("review_location_checked") == "on"
+    requirements_checked = request.form.get("review_requirements_checked") == "on"
+    evidence_checked = request.form.get("review_evidence_checked") == "on"
+    review_notes = request.form.get("review_notes", "").strip()
+
+    if not all([campaign.evidence_summary, campaign.evidence_url, campaign.needs_source]):
+        flash("This campaign has not supplied all required evidence details.", "error")
+        return redirect(url_for("dashboard"))
+
+    if not campaign.evidence_url.lower().startswith(("https://", "http://")):
+        flash("The campaign evidence link must use HTTP or HTTPS.", "error")
+        return redirect(url_for("dashboard"))
+
+    try:
+        def parse_campaign_requirements():
+            ...
+
+        parse_campaign_requirements(campaign.required_items)
+    except ValueError as error:
+        flash(f"Campaign needs are not valid: {error}", "error")
+        return redirect(url_for("dashboard"))
+
+    if not all([location_checked, requirements_checked, evidence_checked]):
+        flash("Complete all three campaign checks before approving this campaign.", "error")
+        return redirect(url_for("dashboard"))
+
+    if not review_notes:
+        flash("Add a short note describing the basis for this campaign review.", "error")
+        return redirect(url_for("dashboard"))
+
+    campaign.review_location_checked = location_checked
+    campaign.review_requirements_checked = requirements_checked
+    campaign.review_evidence_checked = evidence_checked
+    campaign.review_notes = review_notes[:2000]
+    campaign.reviewed_at = datetime.utcnow()
     campaign.status = "active"
     campaign.last_verified_at = datetime.utcnow()
 
     db.session.commit()
 
-    flash(
-        "Campaign approved and published.",
-        "success"
-    )
-
+    flash("Campaign approved. The verification checklist has been recorded.", "success")
     return redirect(url_for("dashboard"))
 
 
@@ -973,6 +1072,163 @@ def collect_donation_items():
 
     return rows
 
+def normalize_item_name(value):
+    """Normalise item labels for safe, case-insensitive matching."""
+    return " ".join((value or "").strip().casefold().split())
+
+
+def parse_campaign_requirements(raw_text):
+    """Parse requirement lines such as 'Blankets: 100'."""
+    requirements = []
+    seen = set()
+
+    for line_number, line in enumerate((raw_text or "").splitlines(), start=1):
+        line = line.strip()
+        if not line:
+            continue
+
+        match = re.fullmatch(r"(.{1,120}?)\s*:\s*(\d{1,5})", line)
+        if not match:
+            raise ValueError(
+                f"Requirement line {line_number} must use 'Item name: quantity', "
+                "for example 'Blankets: 100'."
+            )
+
+        name = match.group(1).strip()
+        quantity = int(match.group(2))
+        key = normalize_item_name(name)
+
+        if not key:
+            raise ValueError(f"Requirement line {line_number} has no item name.")
+        if quantity < 1 or quantity > 10000:
+            raise ValueError("Each requirement must be between 1 and 10,000 units.")
+        if key in seen:
+            raise ValueError(f"The item '{name}' is listed more than once. Combine it into one line.")
+
+        seen.add(key)
+        requirements.append({
+            "name": name,
+            "key": key,
+            "required": quantity,
+        })
+
+    if not requirements:
+        raise ValueError("Add at least one requirement using 'Item name: quantity' on each line.")
+
+    return requirements
+
+
+def campaign_inventory(campaign):
+    """Return each campaign need with accepted, committed, remaining and surplus quantities.
+
+    For verified donations, only accepted quantities fulfil the requirement.
+    Active offers and offline receipts awaiting final verification count as commitments.
+    Cancelled/rejected donations are excluded.
+    """
+    try:
+        requirements = parse_campaign_requirements(campaign.required_items)
+    except ValueError:
+        # Do not crash public pages for legacy campaigns with malformed free text.
+        return []
+
+    totals = {
+        requirement["key"]: {"accepted": 0, "committed": 0}
+        for requirement in requirements
+    }
+
+    donations = Donation.query.filter_by(campaign_id=campaign.id).all()
+    for donation in donations:
+        if donation.status in {"cancelled", "rejected"}:
+            continue
+
+        for item in donation.items:
+            key = normalize_item_name(item.item_name)
+            if key not in totals:
+                continue
+
+            if donation.status == "verified":
+                totals[key]["accepted"] += max(0, int(item.accepted_qty or 0))
+            else:
+                totals[key]["committed"] += max(0, int(item.declared_qty or 0))
+
+    result = []
+    for requirement in requirements:
+        amount = totals[requirement["key"]]
+        accounted_for = amount["accepted"] + amount["committed"]
+        result.append({
+            "name": requirement["name"],
+            "key": requirement["key"],
+            "required": requirement["required"],
+            "accepted": amount["accepted"],
+            "committed": amount["committed"],
+            "remaining": max(0, requirement["required"] - accounted_for),
+            "surplus": max(0, accounted_for - requirement["required"]),
+        })
+    return result
+
+
+def validate_items_against_campaign(campaign, items_data, inventory=None):
+    """Reject online pledges that do not match a listed need or exceed its balance."""
+    inventory = inventory if inventory is not None else campaign_inventory(campaign)
+    if not inventory:
+        raise ValueError(
+            "This campaign has no readable structured requirements. Ask the NGO to update its list."
+        )
+
+    by_key = {row["key"]: row for row in inventory}
+    totals_requested = {}
+
+    for row in items_data:
+        key = normalize_item_name(row["name"])
+        if key not in by_key:
+            raise ValueError(
+                f"'{row['name']}' is not a listed requirement for this campaign. Select an item from the list."
+            )
+        totals_requested[key] = totals_requested.get(key, 0) + row["quantity"]
+        # Store the canonical campaign spelling rather than arbitrary user input.
+        row["name"] = by_key[key]["name"]
+
+    for key, requested_quantity in totals_requested.items():
+        need = by_key[key]
+        if requested_quantity > need["remaining"]:
+            raise ValueError(
+                f"Only {need['remaining']} more unit(s) of {need['name']} can be pledged "
+                f"right now; your form requests {requested_quantity}."
+            )
+
+    return items_data
+
+
+def offline_surplus_warnings(campaign, items_data):
+    """Warn about surplus/unlisted physical goods, but never block recording goods already received."""
+    if not campaign:
+        return []
+
+    inventory = campaign_inventory(campaign)
+    if not inventory:
+        return ["This campaign's needs list could not be parsed; recorded goods need manual allocation."]
+
+    by_key = {row["key"]: row for row in inventory}
+    incoming = {}
+    for row in items_data:
+        key = normalize_item_name(row["name"])
+        incoming[key] = incoming.get(key, 0) + row["quantity"]
+
+    warnings = []
+    for key, quantity in incoming.items():
+        need = by_key.get(key)
+        if not need:
+            warnings.append(
+                f"{quantity} unit(s) of '{key}' are not on this campaign's needs list. "
+                "The physical donation was recorded; allocate it manually."
+            )
+        elif quantity > need["remaining"]:
+            excess = quantity - need["remaining"]
+            warnings.append(
+                f"Surplus flagged: {excess} extra unit(s) of {need['name']}. "
+                "The physical donation was recorded and needs allocation review."
+            )
+    return warnings
 
 def donation_access_allowed(donation):
     """Check whether the authenticated user can view a full record."""
@@ -1012,7 +1268,7 @@ def donate_to_campaign(campaign_id):
     require_role("donor")
 
     campaign = db.session.get(Campaign, campaign_id)
-
+    campaign = Campaign.query.filter_by(id=campaign_id).with_for_update().first_or_404()
     if (
         not campaign
         or campaign.status != "active"
@@ -1021,16 +1277,24 @@ def donate_to_campaign(campaign_id):
     ):
         abort(404)
 
+    inventory = campaign_inventory(campaign)
+
     if request.method == "POST":
 
         try:
             items_data = collect_donation_items()
+            items_data = validate_items_against_campaign(
+                campaign, items_data, inventory
+            )
         except ValueError as error:
             flash(str(error), "error")
-
             return render_template(
                 "donation_form.html",
-                campaign=campaign
+                campaign=campaign,
+                inventory=campaign_inventory(campaign),
+                has_open_needs=any(
+                    row["remaining"] > 0 for row in campaign_inventory(campaign)
+                ),
             ), 400
 
         delivery_method = request.form.get(
@@ -1117,9 +1381,12 @@ def donate_to_campaign(campaign_id):
             )
         )
 
+    inventory = campaign_inventory(campaign)
     return render_template(
         "donation_form.html",
-        campaign=campaign
+        campaign=campaign,
+        inventory=inventory,
+        has_open_needs=any(row["remaining"] > 0 for row in inventory),
     )
 
 
@@ -1231,6 +1498,7 @@ def offline_donation():
                     "offline_donation.html",
                     campaigns=active_campaigns
                 ), 400
+        surplus_warnings = offline_surplus_warnings(campaign, items_data)
 
         donation = Donation(
             code=generate_donation_code(),
@@ -1282,6 +1550,9 @@ def offline_donation():
             "Offline donation registered. Verify the quantities received.",
             "success"
         )
+
+        for warning in surplus_warnings:
+            flash(warning, "warning")
 
         return redirect(
             url_for(
@@ -2147,6 +2418,45 @@ with app.app_context():
         db.session.add(admin)
 
         db.session.commit()
+    # Add new review fields to existing SQLite or PostgreSQL databases.
+    # db.create_all() creates missing tables but does not add columns.
+    def ensure_table_columns(table_name, additions):
+        existing = {
+            column["name"]
+            for column in inspect(db.engine).get_columns(table_name)
+        }
+        for column_name, sql_type in additions.items():
+            if column_name not in existing:
+                with db.engine.begin() as connection:
+                    connection.execute(
+                        text(
+                            f'ALTER TABLE "{table_name}" '
+                            f'ADD COLUMN "{column_name}" {sql_type}'
+                        )
+                    )
+
+    ensure_table_columns("ngos", {
+        "legal_form": "VARCHAR(60)",
+        "registration_number": "VARCHAR(120)",
+        "registration_authority": "VARCHAR(150)",
+        "evidence_url": "VARCHAR(500)",
+        "review_registration_checked": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "review_address_checked": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "review_contact_checked": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "review_notes": "TEXT",
+        "reviewed_at": "TIMESTAMP NULL",
+    })
+
+    ensure_table_columns("campaigns", {
+        "evidence_summary": "TEXT",
+        "evidence_url": "VARCHAR(500)",
+        "needs_source": "VARCHAR(180)",
+        "review_location_checked": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "review_requirements_checked": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "review_evidence_checked": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "review_notes": "TEXT",
+        "reviewed_at": "TIMESTAMP NULL",
+    })       
 
 
 # ==========================================

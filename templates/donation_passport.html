@@ -116,7 +116,7 @@
                 <div>
                     <span class="detail-label">Receipt verified</span>
                     <strong>
-                        {{ donation.received_at.strftime("%d %b %Y, %I:%M %p") }}
+                        {{ donation.received_at | ist_datetime("%d %b %Y, %I:%M %p") }}
                     </strong>
                 </div>
 

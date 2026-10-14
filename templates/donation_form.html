@@ -32,12 +32,12 @@
                         <div class="col-md-5">
                             <label class="form-label">Item name</label>
 
-                            <input
-                                name="item_name"
-                                class="form-control"
-                                maxlength="120"
-                                required
-                            >
+                            <select name="item_name" class="form-select" required>
+                                <option value="">Choose a current need</option>
+                                {% for need in inventory if need.remaining > 0 %}
+                                <option value="{{ need.name }}">{{ need.name }} — {{ need.remaining }} remaining</option>
+                                {% endfor %}
+                            </select>
                         </div>
 
                         <div class="col-md-3">
@@ -125,12 +125,7 @@
 
                 </div>
 
-                <button
-                    type="submit"
-                    class="btn btn-primary"
-                >
-                    Register donation
-                </button>
+                <button type="submit" class="btn btn-primary" {% if not has_open_needs %}disabled{% endif %}>
 
                 <a
                     href="{{ url_for('campaign_detail', campaign_id=campaign.id) }}"
@@ -138,6 +133,12 @@
                 >
                     Cancel
                 </a>
+
+                  {% if not has_open_needs %}
+                <div class="alert alert-success" role="status">
+                    All listed requirements are currently fulfilled or committed. Please check back after the NGO updates its needs.
+                </div>
+                  {% endif %}
 
             </form>
 
@@ -147,9 +148,11 @@
 
 </div>
 
+
 <script>
     const itemRows = document.getElementById("itemRows");
     const addItemButton = document.getElementById("addItemButton");
+    const itemOptions = itemRows.querySelector('select[name="item_name"]').innerHTML;
 
     addItemButton.addEventListener("click", () => {
 
@@ -165,12 +168,9 @@
         row.innerHTML = `
             <div class="col-md-5">
                 <label class="form-label">Item name</label>
-                <input
-                    name="item_name"
-                    class="form-control"
-                    maxlength="120"
-                    required
-                >
+                <select name="item_name" class="form-select" required>
+                    ${itemOptions}
+                </select>
             </div>
 
             <div class="col-md-3">

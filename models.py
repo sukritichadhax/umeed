@@ -19,6 +19,25 @@ class NGO(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     description = db.Column(db.Text,nullable=True)
 
+    # Information submitted by the NGO for administrator review.
+    legal_form = db.Column(db.String(60), nullable=True)
+    registration_number = db.Column(db.String(120), nullable=True)
+    registration_authority = db.Column(db.String(150), nullable=True)
+    evidence_url = db.Column(db.String(500), nullable=True)
+
+    # Administrator checklist and decision record.
+    review_registration_checked = db.Column(
+        db.Boolean, nullable=False, default=False
+    )
+    review_address_checked = db.Column(
+        db.Boolean, nullable=False, default=False
+    )
+    review_contact_checked = db.Column(
+        db.Boolean, nullable=False, default=False
+    )
+    review_notes = db.Column(db.Text, nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+
     users = db.relationship("User", back_populates="ngo")
     campaigns = db.relationship("Campaign", back_populates="ngo")
 
@@ -55,6 +74,25 @@ class Campaign(db.Model):
     location = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=False)
     required_items = db.Column(db.Text, nullable=False)
+
+    # Campaign-specific supporting context submitted by the NGO.
+    evidence_summary = db.Column(db.Text, nullable=True)
+    evidence_url = db.Column(db.String(500), nullable=True)
+    needs_source = db.Column(db.String(180), nullable=True)
+
+    # Administrator checklist and decision record.
+    review_location_checked = db.Column(
+        db.Boolean, nullable=False, default=False
+    )
+    review_requirements_checked = db.Column(
+        db.Boolean, nullable=False, default=False
+    )
+    review_evidence_checked = db.Column(
+        db.Boolean, nullable=False, default=False
+    )
+    review_notes = db.Column(db.Text, nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    
     status = db.Column(db.String(20), nullable=False, default="pending")
     last_verified_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

@@ -116,6 +116,26 @@
                         required
                     ></textarea>
 
+                    <div class="mb-3">
+                    <label for="evidence_summary" class="form-label">What supports this request?</label>
+                    <textarea id="evidence_summary" name="evidence_summary"
+                              class="form-control" rows="3" maxlength="1500" required
+                              placeholder="Describe who reported the need, what was observed, and when it was checked."></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="needs_source" class="form-label">Source of the needs information</label>
+                    <input id="needs_source" name="needs_source" class="form-control"
+                           maxlength="180" required
+                           placeholder="e.g. field coordinator / relief camp coordinator">
+                </div>
+                <div class="mb-3">
+                    <label for="evidence_url" class="form-label">Supporting evidence link</label>
+                    <input id="evidence_url" name="evidence_url" type="url"
+                           class="form-control" maxlength="500" required
+                           placeholder="https://...">
+                    <div class="form-text">Evidence could be a dated field update, a sample photo record, or a document link. Avoid publishing sensitive beneficiary information.</div>
+                </div>
+
                     <div class="form-text">
                         Enter one item and its requested quantity per line.
                     </div>

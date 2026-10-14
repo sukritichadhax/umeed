@@ -60,6 +60,16 @@
 
                                 <td>
                                     <strong>{{ ngo.name }}</strong>
+                                    <div class="small text-secondary mt-1">
+                                        <div>Legal form: {{ ngo.legal_form or "Not supplied" }}</div>
+                                        <div>Registration ref: {{ ngo.registration_number or "Not supplied" }}</div>
+                                        <div>Authority: {{ ngo.registration_authority or "Not supplied" }}</div>
+                                        {% if ngo.evidence_url %}
+                                        <a href="{{ ngo.evidence_url }}" target="_blank" rel="noopener noreferrer">Open supporting evidence</a>
+                                        {% else %}
+                                        <span>Evidence link not supplied</span>
+                                        {% endif %}
+                                    </div>
                                 </td>
 
                                 <td>
@@ -70,26 +80,26 @@
                                     {{ ngo.location }}
                                 </td>
 
-                                <td>
-
-                                    <div class="d-flex flex-wrap gap-2">
-
-                                        <form
-                                            action="{{ url_for(
-                                                'approve_ngo',
-                                                ngo_id=ngo.id
-                                            ) }}"
-                                            method="post"
-                                        >
-
-                                            <button
-                                                type="submit"
-                                                class="btn btn-success btn-sm"
-                                            >
-                                                Approve
-                                            </button>
-
-                                        </form>
+                                <details class="mt-2">
+                                            <summary class="btn btn-outline-primary btn-sm">Review & approve</summary>
+                                            <form action="{{ url_for('approve_campaign', campaign_id=campaign.id) }}" method="post" class="border rounded p-3 mt-2">
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input" type="checkbox" name="review_location_checked" id="camp-location-{{ campaign.id }}" required>
+                                                    <label class="form-check-label" for="camp-location-{{ campaign.id }}">Reported location checked</label>
+                                                </div>
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input" type="checkbox" name="review_requirements_checked" id="camp-needs-{{ campaign.id }}" required>
+                                                    <label class="form-check-label" for="camp-needs-{{ campaign.id }}">Item names and quantities reviewed</label>
+                                                </div>
+                                                <div class="form-check mb-3">
+                                                    <input class="form-check-input" type="checkbox" name="review_evidence_checked" id="camp-evidence-{{ campaign.id }}" required>
+                                                    <label class="form-check-label" for="camp-evidence-{{ campaign.id }}">Supporting evidence reviewed</label>
+                                                </div>
+                                                <label class="form-label" for="camp-notes-{{ campaign.id }}">Review notes</label>
+                                                <textarea class="form-control mb-2" id="camp-notes-{{ campaign.id }}" name="review_notes" rows="2" maxlength="2000" required placeholder="What did you verify?"></textarea>
+                                                <button type="submit" class="btn btn-success btn-sm">Save review & publish</button>
+                                            </form>
+                                        </details>
 
 
                                         <form
@@ -465,6 +475,16 @@
 
                                     {% endif %}
                                 </td>
+
+                                <div class="small text-secondary mt-1">
+                                        <div>Needs reported by: {{ campaign.needs_source or "Not supplied" }}</div>
+                                        <div>{{ campaign.evidence_summary or "No evidence summary supplied" }}</div>
+                                        {% if campaign.evidence_url %}
+                                        <a href="{{ campaign.evidence_url }}" target="_blank" rel="noopener noreferrer">Open campaign evidence</a>
+                                        {% else %}
+                                        <span>Evidence link not supplied</span>
+                                        {% endif %}
+                                    </div>
 
                                 <td>
                                     {{ campaign.emergency_type }}
