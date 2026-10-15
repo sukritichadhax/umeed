@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+{% block title %}Edit Campaign | Umeed{% endblock %}
+{% block content %}
+<style>
+.editor-page{max-width:1120px;margin:0 auto}
+.editor-section{background:#fff;border:1px solid #e7eaf0;border-radius:16px;padding:1.35rem;margin-bottom:1.2rem;box-shadow:0 4px 18px #14233c0a}
+.editor-section h2{font-size:1.15rem;font-weight:800;margin-bottom:.9rem}
+.editor-help{color:#64748b;font-size:.9rem;line-height:1.6}
+.editor-section textarea{min-height:105px}
+.image-editor{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.catalog-row{border:1px solid #dfe5ee;border-radius:14px;padding:1rem;margin:.85rem 0;background:#fbfcfe}
+.catalog-row-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.8rem}
+.catalog-row-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:.75rem}
+.catalog-row-grid.inkind-grid{grid-template-columns:2fr 1fr}
+.catalog-row label{font-size:.88rem;font-weight:700;margin-bottom:.3rem}
+.image-field-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;align-items:start;gap:.6rem;margin-top:.85rem}
+.image-field-row>div{min-width:0}
+.image-field-row label{display:block;margin-bottom:.3rem}
+.image-field-row input{width:100%;min-width:0;box-sizing:border-box}
+.image-field-row input[type=file]{max-width:100%;min-height:38px}
+.image-field-row .small-help{font-size:.8rem;color:#64748b;margin-top:.35rem}
+.image-field-row button[data-clear-image]{align-self:start;margin-top:1.65rem}
+.catalog-row-remove{border-radius:999px;width:34px;height:34px;line-height:1;font-size:1.2rem;font-weight:800;padding:0}
+.catalog-row .small-help{font-size:.8rem;color:#64748b;margin-top:.35rem}
+.catalog-actions{display:flex;flex-wrap:wrap;gap:.65rem;margin-top:1rem}
+.row-count{font-size:.8rem;color:#64748b;font-weight:700}
+.campaign-preview-image{display:block;width:100%;max-width:520px;aspect-ratio:16/9;object-fit:cover;object-position:center;border-radius:12px;background:#fff;border:1px solid #e2e8f0}
+@media(max-width:750px){
+  .image-editor,.catalog-row-grid,.catalog-row-grid.inkind-grid,.image-field-row{grid-template-columns:1fr}
+  .catalog-row-head{align-items:flex-start}
+  .image-field-row button[data-clear-image]{margin-top:0;justify-self:start}
+}
+</style>
+
+<div class="editor-page">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+      <div class="text-secondary small text-uppercase fw-bold mb-1">NGO campaign management</div>
+      <h1 class="h2 fw-bold mb-2">Edit campaign</h1>
+      <p class="text-secondary mb-0">Manage campaign information, images, vendor products, and physical in-kind supplies.</p>
+    </div>
+    <span class="badge text-bg-secondary">Status: {{ campaign.status|replace('_',' ')|title }}</span>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" id="campaignEditorForm">
+
+    <section class="editor-section">
+      <h2>1. Campaign information</h2>
+
+      <div class="mb-3">
+        <label for="title" class="form-label">Campaign title</label>
+        <input id="title" name="title" class="form-control" maxlength="180" required value="{{ form_values.get('title', campaign.title) }}">
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label for="emergency_type" class="form-label">Category</label>
+          {% set chosen_type = form_values.get('emergency_type', campaign.emergency_type) %}
+          <select id="emergency_type" name="emergency_type" class="form-select" required>
+            {% for category in emergency_types %}
+              <option value="{{ category }}" {% if chosen_type == category %}selected{% endif %}>{{ category }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="location" class="form-label">Location</label>
+          <input id="location" name="location" class="form-control" maxlength="200" required value="{{ form_values.get('location', campaign.location) }}">
+        </div>
+      </div>
+    </section>
+
+    <section class="editor-section">
+      <h2>Campaign preview for Explore Campaigns</h2>
+      <p class="editor-help">This image and brief overview appear on the Explore Campaigns cards before donors open the full campaign.</p>
+
+      {% set overview_default = campaign.card_overview or campaign.story_who_helping or campaign.description or '' %}
+
+      <div class="mb-3">
+        <label for="card_overview" class="form-label fw-bold">Brief campaign overview (200–300 characters)</label>
+        <textarea id="card_overview" name="card_overview" class="form-control" rows="3" minlength="200" maxlength="300" required placeholder="Briefly explain who needs help and which supplies are needed.">{{ form_values.get('card_overview', overview_default[:300]) }}</textarea>
+        <div class="form-text">Keep it concise. <span id="overview-character-count">0/300 characters</span></div>
+      </div>
+
+      <div class="mb-3">
+        <label for="listing_image_url" class="form-label fw-bold">Explore Campaigns image URL</label>
+        <input
+          id="listing_image_url"
+          name="listing_image_url"
+          type="url"
+          class="form-control"
+          maxlength="1000"
+          placeholder="https://example.com/campaign-image.jpg"
+          value="{{ form_values.get('listing_image_url', campaign.listing_image_url or 'https://npr.brightspotcdn.com/dims3/default/strip/false/crop/3375x2250+0+0/resize/1200/quality/85/format/webp/?url=http%3A%2F%2Fnpr-brightspot.s3.amazonaws.com%2F7c%2F05%2F469543ab4164bcddf1fe1a1cebed%2Fap24272408399611.jpg') }}"
+        >
+        <div class="form-text">This image is separate from the three-image campaign detail carousel.</div>
+      </div>
+
+      <div class="mb-1">
+        <label for="campaign-listing-preview" class="form-label fw-bold">Image preview</label>
+        <img
+          id="campaign-listing-preview"
+          class="campaign-preview-image"
+          src="{{ form_values.get('listing_image_url', campaign.listing_image_url or 'https://npr.brightspotcdn.com/dims3/default/strip/false/crop/3375x2250+0+0/resize/1200/quality/85/format/webp/?url=http%3A%2F%2Fnpr-brightspot.s3.amazonaws.com%2F7c%2F05%2F469543ab4164bcddf1fe1a1cebed%2Fap24272408399611.jpg') }}"
+          alt="Campaign card preview"
+        >
+      </div>
+    </section>
+
+    <section class="editor-section">
+      <h2>2. Campaign story</h2>
+      <p class="editor-help">These descriptions appear under their respective headings on the donor-facing campaign page.</p>
+
+      <div class="mb-3">
+        <label for="story_who_helping" class="form-label fw-bold">Who you're helping</label>
+        <textarea id="story_who_helping" name="story_who_helping" class="form-control" maxlength="5000">{{ form_values.get('story_who_helping', campaign.story_who_helping or campaign.description) }}</textarea>
+      </div>
+
+      <div class="mb-3">
+        <label for="story_urgency" class="form-label fw-bold">Why support is urgent</label>
+        <textarea id="story_urgency" name="story_urgency" class="form-control" maxlength="5000">{{ form_values.get('story_urgency', campaign.story_urgency or '') }}</textarea>
+      </div>
+
+      <div class="mb-3">
+        <label for="story_mission" class="form-label fw-bold">Who's behind the mission</label>
+        <textarea id="story_mission" name="story_mission" class="form-control" maxlength="5000">{{ form_values.get('story_mission', campaign.story_mission or '') }}</textarea>
+      </div>
+
+      <div>
+        <label for="story_impact" class="form-label fw-bold">What your donation makes possible</label>
+        <textarea id="story_impact" name="story_impact" class="form-control" maxlength="5000">{{ form_values.get('story_impact', campaign.story_impact or '') }}</textarea>
+      </div>
+    </section>
+
+    <section class="editor-section">
+      <h2>3. Campaign carousel images</h2>
+      <p class="editor-help">Use a publicly accessible image URL. Use HTTPS for deployment.</p>
+      <div class="image-editor">
+        {% for index in range(1,4) %}
+          <div>
+            <label for="carousel_image_{{ index }}" class="form-label">Image {{ index }}</label>
+            <input
+              id="carousel_image_{{ index }}"
+              name="carousel_image_{{ index }}"
+              type="url"
+              class="form-control"
+              placeholder="https://example.com/image.jpg"
+              value="{{ form_values.get('carousel_image_' ~ index, campaign['carousel_image_' ~ index] or carousel_defaults[index-1]) }}"
+            >
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="editor-section">
+      <h2>4. Donate Products catalogue</h2>
+      <p class="editor-help">
+        These are products Umeed arranges from vendors. This catalogue is separate from physical in-kind donations.
+        Add, remove, or edit rows here. Donors will see the saved products on the campaign page.
+        Each row includes a target quantity, indicative unit price in ₹, and an image URL or uploaded PNG/JPEG/WebP image.
+      </p>
+
+      <div class="mb-3">
+        <label for="products_intro" class="form-label">Donor-facing introduction</label>
+        <textarea id="products_intro" name="products_intro" class="form-control" maxlength="5000">{{ form_values.get('products_intro', campaign.products_intro or default_products_intro) }}</textarea>
+      </div>
+
+      <div id="productRows">
+        {% for row in product_rows %}
+          <div class="catalog-row" data-catalog-row data-kind="product">
+            <div class="catalog-row-head">
+              <div>
+                <strong data-row-heading>Product {{ loop.index }}</strong>
+                <div class="row-count">Vendor procurement</div>
+              </div>
+              <button type="button" class="btn btn-outline-danger catalog-row-remove" data-remove-row aria-label="Remove product">×</button>
+            </div>
+
+            <div class="catalog-row-grid">
+              <div>
+                <label>Product name / pack size</label>
+                <input type="text" name="product_name" class="form-control" maxlength="120" required value="{{ row.name }}" placeholder="Masoor dal (1 kg pack)">
+              </div>
+              <div>
+                <label>Target quantity</label>
+                <input type="number" name="product_required_qty" class="form-control" min="1" max="1000000" step="1" required value="{{ row.required_qty }}">
+              </div>
+              <div>
+                <label>Unit value (₹)</label>
+                <input type="number" name="product_unit_price" class="form-control" min="0" max="10000000" step="1" required value="{{ row.unit_price }}">
+              </div>
+            </div>
+
+            <div class="image-field-row">
+              <div>
+                <label>Image URL (optional)</label>
+                <input type="text" name="product_image_url" class="form-control" value="{{ row.image_url }}" placeholder="https://... or /static/..." maxlength="1000">
+                <div class="small-help">An uploaded image overrides this URL.</div>
+              </div>
+              <div>
+                <label>Upload PNG/JPG/WebP</label>
+                <input type="file" name="product_image_{{ loop.index0 }}" class="form-control" accept="image/png,image/jpeg,image/webp" data-image-upload>
+              </div>
+              <button type="button" class="btn btn-outline-secondary" data-clear-image>Clear image</button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="catalog-actions">
+        <button type="button" class="btn btn-outline-primary" id="addProductRow">＋ Add product</button>
+        <span class="editor-help align-self-center">Removing a row removes it from the vendor catalogue when saved.</span>
+      </div>
+    </section>
+
+    <section class="editor-section">
+      <h2>5. In-kind donation catalogue</h2>
+      <p class="editor-help">
+        These are physical items donors can bring or request pickup for.
+        This catalogue is separate from Donate Products.
+        Add or remove items here to update the physical donation options displayed to donors.
+      </p>
+
+      <div class="mb-3">
+        <label for="in_kind_intro" class="form-label">Donor-facing introduction</label>
+        <textarea id="in_kind_intro" name="in_kind_intro" class="form-control" maxlength="5000">{{ form_values.get('in_kind_intro', campaign.in_kind_intro or default_in_kind_intro) }}</textarea>
+      </div>
+
+      <div id="inkindRows">
+        {% for row in inkind_rows %}
+          <div class="catalog-row" data-catalog-row data-kind="inkind">
+            <div class="catalog-row-head">
+              <div>
+                <strong data-row-heading>Physical item {{ loop.index }}</strong>
+                <div class="row-count">Donor-provided supply</div>
+              </div>
+              <button type="button" class="btn btn-outline-danger catalog-row-remove" data-remove-row aria-label="Remove physical item">×</button>
+            </div>
+
+            <div class="catalog-row-grid inkind-grid">
+              <div>
+                <label>Product name / pack size</label>
+                <input type="text" name="inkind_name" class="form-control" maxlength="120" required value="{{ row.name }}" placeholder="Clean blankets (1 piece)">
+              </div>
+              <div>
+                <label>Target quantity</label>
+                <input type="number" name="inkind_required_qty" class="form-control" min="1" max="1000000" step="1" required value="{{ row.required_qty }}">
+              </div>
+            </div>
+
+            <div class="image-field-row">
+              <div>
+                <label>Image URL (optional)</label>
+                <input type="text" name="inkind_image_url" class="form-control" value="{{ row.image_url }}" placeholder="https://... or /static/..." maxlength="1000">
+                <div class="small-help">An uploaded image overrides this URL.</div>
+              </div>
+              <div>
+                <label>Upload PNG/JPG/WebP</label>
+                <input type="file" name="inkind_image_{{ loop.index0 }}" class="form-control" accept="image/png,image/jpeg,image/webp" data-image-upload>
+              </div>
+              <button type="button" class="btn btn-outline-secondary" data-clear-image>Clear image</button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="catalog-actions">
+        <button type="button" class="btn btn-outline-primary" id="addInkindRow">＋ Add physical item</button>
+        <span class="editor-help align-self-center">This list controls the separate physical in-kind tab, not vendor purchases.</span>
+      </div>
+
+      <div class="mt-4">
+        <label for="packaging_steps" class="form-label fw-bold">Packaging instructions — exactly four steps</label>
+        <p class="editor-help">One instruction per line. These rules apply only to physical in-kind donations.</p>
+        <textarea id="packaging_steps" name="packaging_steps" class="form-control" required>{{ form_values.get('packaging_steps', campaign.packaging_steps or default_packaging_steps) }}</textarea>
+      </div>
+    </section>
+
+    <div class="d-flex flex-wrap gap-2 mb-4">
+      <button type="submit" class="btn btn-primary">Save campaign changes</button>
+      <a href="{{ url_for('ngo_campaigns') }}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+  </form>
+
+  {% if campaign.status == 'active' %}
+    <section class="editor-section border-danger">
+      <h2 class="text-danger">Close campaign</h2>
+      <p class="text-secondary">Closing removes this campaign from the public active-campaign list. Existing donation history remains.</p>
+      <form method="post" action="{{ url_for('close_campaign', campaign_id=campaign.id) }}" onsubmit="return confirm('Are you sure you want to close this campaign?');">
+        <button type="submit" class="btn btn-outline-danger">Close this campaign</button>
+      </form>
+    </section>
+  {% endif %}
+</div>
+
+<template id="productRowTemplate">
+  <div class="catalog-row" data-catalog-row data-kind="product">
+    <div class="catalog-row-head">
+      <div><strong data-row-heading>Product</strong><div class="row-count">Vendor procurement</div></div>
+      <button type="button" class="btn btn-outline-danger catalog-row-remove" data-remove-row aria-label="Remove product">×</button>
+    </div>
+    <div class="catalog-row-grid">
+      <div><label>Product name / pack size</label><input type="text" name="product_name" class="form-control" maxlength="120" required placeholder="Masoor dal (1 kg pack)"></div>
+      <div><label>Target quantity</label><input type="number" name="product_required_qty" class="form-control" min="1" max="1000000" step="1" required value="1"></div>
+      <div><label>Unit value (₹)</label><input type="number" name="product_unit_price" class="form-control" min="0" max="10000000" step="1" required value="0"></div>
+    </div>
+    <div class="image-field-row">
+      <div><label>Image URL (optional)</label><input type="text" name="product_image_url" class="form-control" placeholder="https://... or /static/..." maxlength="1000"><div class="small-help">An uploaded image overrides this URL.</div></div>
+      <div><label>Upload PNG/JPG/WebP</label><input type="file" name="product_image_0" class="form-control" accept="image/png,image/jpeg,image/webp" data-image-upload></div>
+      <button type="button" class="btn btn-outline-secondary" data-clear-image>Clear image</button>
+    </div>
+  </div>
+</template>
+
+<template id="inkindRowTemplate">
+  <div class="catalog-row" data-catalog-row data-kind="inkind">
+    <div class="catalog-row-head">
+      <div><strong data-row-heading>Physical item</strong><div class="row-count">Donor-provided supply</div></div>
+      <button type="button" class="btn btn-outline-danger catalog-row-remove" data-remove-row aria-label="Remove physical item">×</button>
+    </div>
+    <div class="catalog-row-grid inkind-grid">
+      <div><label>Product name / pack size</label><input type="text" name="inkind_name" class="form-control" maxlength="120" required placeholder="Clean blankets (1 piece)"></div>
+      <div><label>Target quantity</label><input type="number" name="inkind_required_qty" class="form-control" min="1" max="1000000" step="1" required value="1"></div>
+    </div>
+    <div class="image-field-row">
+      <div><label>Image URL (optional)</label><input type="text" name="inkind_image_url" class="form-control" placeholder="https://... or /static/..." maxlength="1000"><div class="small-help">An uploaded image overrides this URL.</div></div>
+      <div><label>Upload PNG/JPG/WebP</label><input type="file" name="inkind_image_0" class="form-control" accept="image/png,image/jpeg,image/webp" data-image-upload></div>
+      <button type="button" class="btn btn-outline-secondary" data-clear-image>Clear image</button>
+    </div>
+  </div>
+</template>
+
+<script>
+(() => {
+  const configs = [
+    {
+      kind: 'product',
+      container: document.getElementById('productRows'),
+      template: document.getElementById('productRowTemplate'),
+      add: document.getElementById('addProductRow'),
+      max: 20
+    },
+    {
+      kind: 'inkind',
+      container: document.getElementById('inkindRows'),
+      template: document.getElementById('inkindRowTemplate'),
+      add: document.getElementById('addInkindRow'),
+      max: 30
+    }
+  ];
+
+  function reindex(config) {
+    const rows = [...config.container.querySelectorAll('[data-catalog-row]')];
+
+    rows.forEach((row, index) => {
+      const heading = row.querySelector('[data-row-heading]');
+
+      if (heading) {
+        heading.textContent = config.kind === 'product'
+          ? `Product ${index + 1}`
+          : `Physical item ${index + 1}`;
+      }
+
+      const fileInput = row.querySelector('input[type="file"]');
+
+      if (fileInput) {
+        fileInput.name = `${config.kind}_image_${index}`;
+        fileInput.id = `${config.kind}_image_${index}`;
+      }
+
+      const uploadLabel = row.querySelector('.image-field-row label:nth-of-type(2)');
+
+      if (uploadLabel && fileInput) {
+        uploadLabel.htmlFor = fileInput.id;
+      }
+    });
+
+    if (config.add) {
+      config.add.disabled = rows.length >= config.max;
+    }
+  }
+
+  configs.forEach(config => {
+    if (!config.container || !config.add || !config.template) return;
+
+    config.add.addEventListener('click', () => {
+      if (config.container.querySelectorAll('[data-catalog-row]').length >= config.max) return;
+
+      config.container.appendChild(config.template.content.cloneNode(true));
+      reindex(config);
+
+      const lastRow = config.container.lastElementChild;
+      const firstInput = lastRow.querySelector('input[type="text"]');
+
+      if (firstInput) firstInput.focus();
+    });
+
+    config.container.addEventListener('click', event => {
+      const remove = event.target.closest('[data-remove-row]');
+
+      if (remove) {
+        remove.closest('[data-catalog-row]').remove();
+        reindex(config);
+      }
+
+      const clear = event.target.closest('[data-clear-image]');
+
+      if (clear) {
+        const row = clear.closest('[data-catalog-row]');
+        const file = row.querySelector('input[type="file"]');
+        const url = row.querySelector(`input[name="${config.kind}_image_url"]`);
+
+        if (file) file.value = '';
+        if (url) url.value = '';
+      }
+    });
+
+    reindex(config);
+  });
+})();
+</script>
+
+<script>
+(() => {
+  const overview = document.getElementById("card_overview");
+  const count = document.getElementById("overview-character-count");
+  const imageUrl = document.getElementById("listing_image_url");
+  const preview = document.getElementById("campaign-listing-preview");
+
+  if (overview && count) {
+    const updateCount = () => {
+      const n = overview.value.trim().length;
+      count.textContent = `${n}/300 characters`;
+      count.style.color = n >= 200 && n <= 300 ? "#198754" : "#b42318";
+    };
+
+    overview.addEventListener("input", updateCount);
+    updateCount();
+  }
+
+  if (imageUrl && preview) {
+    imageUrl.addEventListener("input", () => {
+      if (imageUrl.value.trim()) preview.src = imageUrl.value.trim();
+    });
+
+    preview.addEventListener("error", () => {
+      preview.alt = "Preview could not be loaded. Check the image URL.";
+    });
+  }
+})();
+</script>
+{% endblock %}

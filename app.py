@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
+from io import BytesIO
 from datetime import datetime, timezone, timedelta
 import secrets
 import qrcode
+from PIL import Image, UnidentifiedImageError
 import re
 
 from sqlalchemy import inspect, text
@@ -92,11 +94,12 @@ database_url = os.environ.get("DATABASE_URL")
 if database_url:
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
-    app.config["SQLALCHEMY_DATABASE_URI"] = database_url.replace("postgresql://","postgresql+psycopg2://",1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 else:
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + str(BASE_DIR / "umeed.db")
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["MAX_CONTENT_LENGTH"] = 40 * 1024 * 1024  # allow multiple product images, with per-file limits below
 
 db.init_app(app)
 
@@ -148,6 +151,674 @@ def get_approved_ngo(user):
 
     return ngo
 
+# ==========================================
+# CAMPAIGN EDITOR HELPERS
+# ==========================================
+
+LEGACY_DEFAULT_PRODUCT_CATALOG = """Baby food (300 g pack)|100|295|
+Powdered milk (500 g pack)|100|220|
+Poha (1 kg)|100|100|
+Atta (5 kg bag)|100|250|
+Rice (5 kg bag)|100|250|
+Mineral water (1 L bottle)|500|18|
+Tarpaulin sheet (12 x 15 ft)|30|599|
+Rechargeable LED torch (1 unit)|50|399|
+Iodised salt (1 kg)|100|28|
+Sugar (1 kg)|100|59|"""
+
+# The vendor-procurement catalogue is deliberately separate from campaign.required_items,
+# which continues to control the physical in-kind donation tab.
+DEFAULT_PRODUCT_CATALOG = """Iodised salt (1 kg)|100|28|
+Sugar (1 kg)|100|59|
+Atta (5 kg bag)|100|250|
+Masoor dal (1 kg pack)|100|160|
+Rechargeable LED torch (1 unit)|50|399|
+Baby food (300 g pack)|100|295|
+Powdered milk (500 g pack)|100|220|"""
+
+DEFAULT_CAROUSEL_IMAGES = [
+    "https://images.unsplash.com/photo-1547683905-f686c993aae5?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=1200&q=80",
+]
+
+DEFAULT_PRODUCTS_INTRO = (
+    "Choose the relief products you would like Umeed to arrange from suppliers. "
+    "Prices are estimated unit costs and may change with supplier quotations."
+)
+
+DEFAULT_IN_KIND_INTRO = (
+    "Choose the products you intend to provide, then pack and label "
+    "them carefully so the receiving team can sort them safely."
+)
+
+DEFAULT_PACKAGING_STEPS = """Check that food is unopened, properly sealed, and within its expiry date.
+Group similar items together and count the quantities before packing.
+Use clean, sturdy boxes. Keep liquids separate from food, clothing, and other items.
+Print the donation QR code and attach it clearly to the outside of each box. If a label or count is unclear, the team will try to contact you to resolve it. Unsafe, expired, or contaminated items may need to be declined."""
+
+
+def parse_product_catalog(raw):
+    """
+    Convert the editable product catalogue into validated product rows.
+
+    Each non-empty line must use:
+    Product name | Required quantity | Unit price | Image URL
+    """
+
+    products = []
+    seen_names = set()
+
+    for line_number, line in enumerate(raw.splitlines(), start=1):
+        if not line.strip():
+            continue
+
+        parts = [part.strip() for part in line.split("|", 3)]
+
+        if len(parts) != 4:
+            raise ValueError(
+                f"Product line {line_number} must contain four fields "
+                "separated by | characters."
+            )
+
+        name, quantity_text, price_text, image_url = parts
+
+        if not name or len(name) > 120:
+            raise ValueError(
+                f"Enter a product name of 1–120 characters "
+                f"on line {line_number}."
+            )
+
+        normalized_name = name.casefold()
+
+        if normalized_name in seen_names:
+            raise ValueError(
+                f"The product name '{name}' appears more than once."
+            )
+
+        seen_names.add(normalized_name)
+
+        try:
+            required_qty = int(quantity_text)
+            unit_price = int(price_text)
+        except ValueError:
+            raise ValueError(
+                f"Quantity and price must be whole numbers "
+                f"on product line {line_number}."
+            )
+
+        if not 0 <= required_qty <= 1000000:
+            raise ValueError(
+                f"Quantity must be between 0 and 1,000,000 "
+                f"on line {line_number}."
+            )
+
+        if not 0 <= unit_price <= 10000000:
+            raise ValueError(
+                f"Price must be between ₹0 and ₹10,000,000 "
+                f"on line {line_number}."
+            )
+
+        if image_url and not image_url.startswith(
+            ("https://", "http://", "/static/")
+        ):
+            raise ValueError(
+                f"Use an HTTPS/HTTP image URL or a /static/ path "
+                f"on line {line_number}."
+            )
+
+        products.append({
+            "name": name,
+            "required_qty": required_qty,
+            "unit_price": unit_price,
+            "image_url": image_url,
+        })
+
+    if not products:
+        raise ValueError("Add at least one product to the catalogue.")
+
+    if len(products) > 20:
+        raise ValueError("A campaign can have at most 20 product types.")
+
+    return products
+
+
+def campaign_products_for(campaign):
+    """Return product data in the format expected by campaign_detail.html."""
+
+    raw = campaign.product_catalog or DEFAULT_PRODUCT_CATALOG
+
+    try:
+        parsed_products = parse_product_catalog(raw)
+    except ValueError:
+        app.logger.warning(
+            "Invalid product catalogue on campaign %s; using demo items.",
+            campaign.id,
+        )
+        parsed_products = parse_product_catalog(DEFAULT_PRODUCT_CATALOG)
+
+    # Get the same accepted and outstanding quantities used by the tracker.
+    tracker_rows = campaign_supply_summary(campaign)
+
+    tracker_by_name = {
+        str(row.get("name", "")).strip().casefold(): row
+        for row in tracker_rows
+    }
+
+    products = []
+
+    for index, item in enumerate(parsed_products):
+        name = item["name"]
+        required = int(item["required_qty"])
+
+        # Match the product to the campaign's supply tracker.
+        tracker = tracker_by_name.get(name.casefold(), {})
+
+        accepted = int(tracker.get("accepted", 0) or 0)
+        committed = int(tracker.get("committed", 0) or 0)
+
+        if "available" in tracker:
+            available = max(0, int(tracker["available"] or 0))
+        else:
+            available = max(0, required - accepted - committed)
+
+        # Extract the pack size from names such as "Rice (5 kg bag)".
+        if "(" in name and ")" in name:
+            unit_label = name.rsplit("(", 1)[1].split(")", 1)[0].strip()
+        else:
+            unit_label = "unit"
+
+        image_url = item["image_url"] or (
+            "https://placehold.co/600x450/f8fafc/1d3557"
+            "?text=Relief+product"
+        )
+
+        products.append({
+            "index": index,
+            "name": name,
+            "required": required,
+            "required_qty": required,
+            "accepted": accepted,
+            "committed": committed,
+            "available": available,
+            "unit_price": int(item["unit_price"]),
+            "unit_label": unit_label,
+            "image": image_url,
+            "image_url": image_url,
+        })
+
+    return products
+
+
+def campaign_packaging_steps(campaign):
+    """Return the four current packaging instructions."""
+
+    raw = campaign.packaging_steps or DEFAULT_PACKAGING_STEPS
+
+    return [
+        step.strip()
+        for step in raw.splitlines()
+        if step.strip()
+    ]
+
+# Temporary catalogue for the prototype. Replace rates and image URLs with
+# NGO-confirmed procurement details when the campaign editor is implemented.
+DEMO_PRODUCT_META = {
+    "baby food 300 g pack": {
+        "unit_price": 295,
+        "unit_label": "pack",
+        "image": "https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=700&q=80",
+    },
+    "powdered milk 500 g pack": {
+        "unit_price": 220,
+        "unit_label": "pack",
+        "image": "https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=700&q=80",
+    },
+    "poha 1 kg": {
+        "unit_price": 100,
+        "unit_label": "1 kg pack",
+        "image": "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=700&q=80",
+    },
+    "atta 5 kg bag": {
+        "unit_price": 250,
+        "unit_label": "5 kg bag",
+        "image": "https://images.unsplash.com/photo-1627485937980-221c88ac04f9?auto=format&fit=crop&w=700&q=80",
+    },
+    "rice 5 kg bag": {
+        "unit_price": 250,
+        "unit_label": "5 kg bag",
+        "image": "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=700&q=80",
+    },
+    "mineral water 1 l bottle": {
+        "unit_price": 18,
+        "unit_label": "1 L bottle",
+        "image": "https://images.unsplash.com/photo-1606168094336-48f205276929?auto=format&fit=crop&w=700&q=80",
+    },
+    "tarpaulin sheet 12x15 ft": {
+        "unit_price": 599,
+        "unit_label": "sheet",
+        "image": "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=700&q=80",
+    },
+    "rechargeable led torch 1 unit": {
+        "unit_price": 399,
+        "unit_label": "torch",
+        "image": "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=700&q=80",
+    },
+    "masoor dal 1 kg pack": {
+        "unit_price": 160,
+        "unit_label": "1 kg pack",
+        "image": "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=700&q=80",
+    },
+    "masoor dal 1 kg": {
+        "unit_price": 160,
+        "unit_label": "1 kg pack",
+        "image": "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=700&q=80",
+    },
+    "iodised salt 1 kg": {
+        "unit_price": 28,
+        "unit_label": "1 kg pack",
+        "image": "https://images.unsplash.com/photo-1518110925495-5fe2fda0442b?auto=format&fit=crop&w=700&q=80",
+    },
+    "sugar 1 kg": {
+        "unit_price": 59,
+        "unit_label": "1 kg pack",
+        "image": "https://images.unsplash.com/photo-1581441363689-1f3c3c414635?auto=format&fit=crop&w=700&q=80",
+    },
+}
+
+
+def normalize_supply_name(value):
+    """Normalize supply labels and map the legacy Tarpaulins label to the catalogue name."""
+    key = " ".join(re.sub(r"[^a-z0-9]+", " ", (value or "").casefold()).split())
+    # Normalise dimensions such as "12 x 15 ft" and "12x15 ft" to the same key.
+    key = re.sub(r"\b(\d+)\s+x\s+(\d+)\b", r"\1x\2", key)
+    aliases = {
+        "tarpaulins": "tarpaulin sheet 12x15 ft",
+        "tarpaulin": "tarpaulin sheet 12x15 ft",
+        "tarpaulin sheets": "tarpaulin sheet 12x15 ft",
+        "tarpaulin sheet": "tarpaulin sheet 12x15 ft",
+        "tarpaulin sheet 12x15 ft": "tarpaulin sheet 12x15 ft",
+    }
+    return aliases.get(key, key)
+
+
+def campaign_procurement_summary(campaign):
+    """Track vendor-procurement product requests separately from physical in-kind needs."""
+    from collections import defaultdict
+
+    try:
+        catalog = parse_product_catalog(campaign.product_catalog or DEFAULT_PRODUCT_CATALOG)
+    except ValueError:
+        catalog = parse_product_catalog(DEFAULT_PRODUCT_CATALOG)
+
+    required_by_key = {
+        normalize_supply_name(item["name"]): item
+        for item in catalog
+    }
+    accepted_by_key = defaultdict(int)
+    committed_by_key = defaultdict(int)
+
+    donations = Donation.query.filter_by(campaign_id=campaign.id).all()
+    for donation in donations:
+        if donation.delivery_method != "vendor_procurement":
+            continue
+        if donation.status in {"cancelled", "rejected"}:
+            continue
+
+        for item in donation.items:
+            key = normalize_supply_name(item.item_name)
+            if key not in required_by_key:
+                continue
+            if donation.status == "verified" and item.accepted_qty is not None:
+                accepted_by_key[key] += max(0, int(item.accepted_qty or 0))
+            elif donation.status in {"offered", "accepted", "awaiting_confirmation", "received"}:
+                committed_by_key[key] += max(0, int(item.declared_qty or 0))
+
+    summary = []
+    for key, product in required_by_key.items():
+        required = int(product["required_qty"])
+        accepted = accepted_by_key[key]
+        committed = committed_by_key[key]
+        available = max(0, required - accepted - committed)
+        percent = min(100, round(accepted * 100 / required)) if required else 0
+
+        if required and accepted >= required:
+            status = "Target reached"
+        elif available == 0 and required:
+            status = "Fully committed — awaiting procurement/delivery"
+        elif required and accepted / required >= 0.9:
+            status = "Almost fulfilled"
+        elif accepted:
+            status = "In progress"
+        else:
+            status = "Needs supplies"
+
+        summary.append({
+            "name": product["name"],
+            "required": required,
+            "accepted": accepted,
+            "committed": committed,
+            "available": available,
+            "percent": percent,
+            "status": status,
+        })
+    return summary
+
+
+def campaign_product_options(campaign):
+    """Products shown in Donate Products; targets come from the separate procurement catalogue."""
+    try:
+        catalogue = parse_product_catalog(campaign.product_catalog or DEFAULT_PRODUCT_CATALOG)
+    except ValueError:
+        app.logger.warning(
+            "Invalid product catalogue for campaign %s; using safe defaults.",
+            campaign.id,
+        )
+        catalogue = parse_product_catalog(DEFAULT_PRODUCT_CATALOG)
+
+    summary_by_key = {
+        normalize_supply_name(row["name"]): row
+        for row in campaign_procurement_summary(campaign)
+    }
+    products = []
+
+    for index, item in enumerate(catalogue):
+        key = normalize_supply_name(item["name"])
+        tracker = summary_by_key.get(key, {})
+        meta = DEMO_PRODUCT_META.get(key, {})
+        name = item["name"]
+        unit_label = (
+            name.rsplit("(", 1)[1].split(")", 1)[0].strip()
+            if "(" in name and ")" in name
+            else meta.get("unit_label", "unit")
+        )
+        image = item["image_url"] or meta.get("image") or (
+            "https://placehold.co/600x450/f8fafc/1d3557?text=Relief+product"
+        )
+        products.append({
+            "index": index,
+            "name": name,
+            "required": int(item["required_qty"]),
+            "required_qty": int(item["required_qty"]),
+            "accepted": int(tracker.get("accepted", 0)),
+            "committed": int(tracker.get("committed", 0)),
+            "available": int(tracker.get("available", item["required_qty"])),
+            "percent": int(tracker.get("percent", 0)),
+            "status": tracker.get("status", "Needs supplies"),
+            "unit_price": int(item["unit_price"]),
+            "unit_label": unit_label,
+            "image": image,
+            "image_url": image,
+        })
+    return products
+
+
+def parse_inkind_catalog(raw):
+    """Parse physical in-kind products stored as name|target quantity|image URL lines."""
+    rows = []
+    seen = set()
+    for line_number, line in enumerate((raw or "").splitlines(), start=1):
+        if not line.strip():
+            continue
+        parts = [part.strip() for part in line.split("|", 2)]
+        if len(parts) != 3:
+            raise ValueError(
+                f"In-kind product line {line_number} must use: Product name | target quantity | image URL."
+            )
+        name, qty_text, image_url = parts
+        if not name or len(name) > 120 or "|" in name:
+            raise ValueError(f"Enter a product name of 1–120 characters on in-kind line {line_number}.")
+        key = normalize_supply_name(name)
+        if key in seen:
+            raise ValueError(f"The in-kind product '{name}' appears more than once.")
+        seen.add(key)
+        try:
+            required_qty = int(qty_text)
+        except ValueError:
+            raise ValueError(f"Target quantity must be a whole number on in-kind line {line_number}.")
+        if not 1 <= required_qty <= 1_000_000:
+            raise ValueError(f"Target quantity must be from 1 to 1,000,000 on in-kind line {line_number}.")
+        if image_url and not image_url.startswith(("https://", "http://", "/static/")):
+            raise ValueError(f"Use an HTTP/HTTPS image URL or /static/ path on in-kind line {line_number}.")
+        if len(image_url) > 1000:
+            raise ValueError(f"Image URL is too long on in-kind line {line_number}.")
+        rows.append({"name": name, "required_qty": required_qty, "image_url": image_url})
+    if len(rows) > 30:
+        raise ValueError("A campaign can have at most 30 physical in-kind product types.")
+    return rows
+
+
+def campaign_inkind_editor_rows(campaign):
+    """Load editable physical products, falling back to legacy required_items."""
+    raw = getattr(campaign, "inkind_catalog", None)
+    if raw and raw.strip():
+        try:
+            rows = parse_inkind_catalog(raw)
+            for row in rows:
+                row["image_url"] = row.get("image_url", "")
+            return rows
+        except ValueError:
+            app.logger.warning("Invalid in-kind catalogue for campaign %s; falling back to required_items.", campaign.id)
+    rows = []
+    for line in (campaign.required_items or "").splitlines():
+        match = re.match(r"^\s*(.+?)\s*:\s*(\d+)\s*$", line)
+        if match:
+            rows.append({"name": match.group(1).strip(), "required_qty": int(match.group(2)), "image_url": ""})
+    return rows
+
+
+def campaign_inkind_options(campaign):
+    """Build donor-facing physical in-kind cards from the NGO-editable catalogue."""
+    saved_rows = campaign_inkind_editor_rows(campaign)
+    summary_by_key = {
+        normalize_supply_name(row["name"]): row
+        for row in campaign_supply_summary(campaign)
+    }
+    products = []
+    for index, row in enumerate(saved_rows):
+        key = normalize_supply_name(row["name"])
+        tracker = summary_by_key.get(key, {})
+        meta = DEMO_PRODUCT_META.get(key, {})
+        required = int(tracker.get("required", row["required_qty"]))
+        accepted = int(tracker.get("accepted", 0))
+        committed = int(tracker.get("committed", 0))
+        available = int(tracker.get("available", max(0, required - accepted - committed)))
+        image = row.get("image_url") or meta.get("image") or (
+            "https://placehold.co/600x450/f8fafc/1d3557?text=Physical+donation"
+        )
+        name = row["name"]
+        unit_label = (
+            name.rsplit("(", 1)[1].split(")", 1)[0].strip()
+            if "(" in name and ")" in name
+            else meta.get("unit_label", "unit")
+        )
+        percent = min(100, round(accepted * 100 / required)) if required else 0
+        products.append({
+            "index": index,
+            "name": name,
+            "required": required,
+            "accepted": accepted,
+            "committed": committed,
+            "available": available,
+            "percent": percent,
+            "status": tracker.get("status", "Needs supplies"),
+            "unit_price": int(meta.get("unit_price", 0)),
+            "unit_label": unit_label,
+            "image": image,
+            "image_url": image,
+        })
+    return products
+
+
+def save_product_image(upload, campaign_id, product_index, kind="product"):
+    """Validate and save a PNG/JPEG/WebP upload under static for the local prototype."""
+    if not upload or not upload.filename:
+        return None
+
+    raw = upload.read(5 * 1024 * 1024 + 1)
+    if not raw:
+        raise ValueError("An uploaded product image is empty.")
+    if len(raw) > 5 * 1024 * 1024:
+        raise ValueError("Each product image must be 5 MB or smaller.")
+
+    try:
+        image = Image.open(BytesIO(raw))
+        image.verify()
+        image = Image.open(BytesIO(raw))
+        image_format = (image.format or "").upper()
+        width, height = image.size
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise ValueError("Upload a valid PNG, JPEG, or WebP image.")
+
+    extensions = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}
+    if image_format not in extensions:
+        raise ValueError("Product images must be PNG, JPEG, or WebP files.")
+    if width < 1 or height < 1 or width * height > 20_000_000:
+        raise ValueError("Product images must have at most 20 megapixels.")
+
+    upload_dir = BASE_DIR / "static" / "campaign_product_images"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    safe_kind = "inkind" if kind == "inkind" else "product"
+    filename = f"campaign_{campaign_id}_{safe_kind}_{product_index}_{secrets.token_hex(6)}{extensions[image_format]}"
+    destination = upload_dir / filename
+
+    # Re-encode the file so embedded metadata is not retained.
+    if image_format == "JPEG":
+        image = image.convert("RGB")
+    save_options = {"optimize": True} if image_format in {"PNG", "JPEG"} else {}
+    image.save(destination, format=image_format, **save_options)
+
+    return f"/static/campaign_product_images/{filename}"
+
+
+def parse_editor_catalog_from_form(prefix, campaign_id, include_price=True):
+    """Validate dynamic editor rows and persist optional per-row image uploads."""
+    names = request.form.getlist(f"{prefix}_name")
+    quantities = request.form.getlist(f"{prefix}_required_qty")
+    prices = request.form.getlist(f"{prefix}_unit_price") if include_price else []
+    image_urls = request.form.getlist(f"{prefix}_image_url")
+
+    if not (len(names) == len(quantities) == len(image_urls)):
+        raise ValueError(f"The {prefix} product rows are incomplete. Refresh the editor and try again.")
+    if include_price and len(names) != len(prices):
+        raise ValueError("Some Donate Products rows are missing a unit price.")
+    if len(names) > (20 if include_price else 30):
+        raise ValueError("The product catalogue has reached its maximum number of rows.")
+
+    rows = []
+    seen = set()
+    for index, raw_name in enumerate(names):
+        name = raw_name.strip()
+        qty_text = quantities[index].strip()
+        image_url = image_urls[index].strip()
+        price_text = prices[index].strip() if include_price else "0"
+        upload = request.files.get(f"{prefix}_image_{index}")
+
+        # Ignore a completely blank row left by the Add Product interface.
+        if not name and not qty_text and not price_text and not image_url and not (upload and upload.filename):
+            continue
+        if not name:
+            raise ValueError(f"Enter a product name on row {index + 1} of the {prefix} catalogue.")
+        if len(name) > 120 or "|" in name or "\n" in name or "\r" in name:
+            raise ValueError(f"Product names on row {index + 1} must be 1–120 characters and cannot contain | or new lines.")
+
+        key = normalize_supply_name(name)
+        if key in seen:
+            raise ValueError(f"'{name}' appears more than once in the {prefix} catalogue.")
+        seen.add(key)
+
+        try:
+            quantity = int(qty_text)
+        except ValueError:
+            raise ValueError(f"Enter a whole-number target quantity for '{name}'.")
+        if not 1 <= quantity <= 1_000_000:
+            raise ValueError(f"Target quantity for '{name}' must be from 1 to 1,000,000.")
+
+        price = 0
+        if include_price:
+            try:
+                price = int(price_text)
+            except ValueError:
+                raise ValueError(f"Enter a whole-number unit price for '{name}'.")
+            if not 0 <= price <= 10_000_000:
+                raise ValueError(f"Unit price for '{name}' must be between ₹0 and ₹10,000,000.")
+
+        if image_url and not image_url.startswith(("https://", "http://", "/static/")):
+            raise ValueError(f"Use an HTTP/HTTPS image URL or /static/ path for '{name}'.")
+        if len(image_url) > 1000:
+            raise ValueError(f"Image URL for '{name}' is too long.")
+
+        if upload and upload.filename:
+            image_url = save_product_image(upload, campaign_id, index, kind=prefix)
+
+        row = {
+            "name": name,
+            "required_qty": quantity,
+            "image_url": image_url,
+        }
+        if include_price:
+            row["unit_price"] = price
+        rows.append(row)
+
+    if not rows:
+        raise ValueError(f"Add at least one product to the {prefix} catalogue.")
+    return rows
+
+
+def catalog_rows_for_editor(campaign, kind):
+    """Load catalogues into arrays for the visual add/remove row editor."""
+    if kind == "product":
+        raw = campaign.product_catalog or DEFAULT_PRODUCT_CATALOG
+        try:
+            rows = parse_product_catalog(raw)
+        except ValueError:
+            rows = parse_product_catalog(DEFAULT_PRODUCT_CATALOG)
+        return [dict(row, index=i) for i, row in enumerate(rows)]
+    rows = campaign_inkind_editor_rows(campaign)
+    return [dict(row, index=i) for i, row in enumerate(rows)]
+
+
+def get_selected_campaign_products(campaign):
+    """Validate selected quantities on the server and calculate the displayed basket total."""
+    products = campaign_product_options(campaign)
+    selected = []
+    total = 0
+
+    for product in products:
+        raw_qty = request.form.get(f'qty_{product["index"]}', "0").strip()
+        try:
+            quantity = int(raw_qty or "0")
+        except ValueError:
+            raise ValueError(f"Enter a whole-number quantity for {product['name']}.")
+
+        if quantity < 0 or quantity > 10000:
+            raise ValueError("Each quantity must be between 0 and 10,000.")
+
+        available = max(0, int(product["available"]))
+        if quantity > available:
+            raise ValueError(
+                f"Only {available} {product['name']} currently remain available. Please update your quantity."
+            )
+
+        if quantity == 0:
+            continue
+
+        line_total = quantity * product["unit_price"]
+        selected.append({
+            "index": product["index"],
+            "name": product["name"],
+            "quantity": quantity,
+            "condition": "good",
+            "unit_price": product["unit_price"],
+            "unit_label": product["unit_label"],
+            "line_total": line_total,
+        })
+        total += line_total
+
+    if not selected:
+        raise ValueError("Please select a quantity for at least one supply.")
+
+    return selected, total
 
 # ==========================================
 # RECORD DONATION HISTORY EVENTS
@@ -207,163 +878,55 @@ def health():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
-
         name = request.form.get("name", "").strip()
-
-        email = request.form.get(
-            "email",
-            ""
-        ).strip().lower()
-
+        email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-
-        account_type = request.form.get(
-            "account_type",
-            "donor"
-        )
-
-        # Basic form validation
+        account_type = request.form.get("account_type", "donor")
 
         if not name or not email or not password:
-
-            flash(
-                "Please complete all required fields.",
-                "error"
-            )
-
-            return render_template("register.html")
-
+            flash("Please complete all required fields.", "error")
+            return render_template("register.html"), 400
+        if len(name) > 150 or len(email) > 254:
+            flash("Name or email is too long.", "error")
+            return render_template("register.html"), 400
         if len(password) < 8:
-
-            flash(
-                "Your password must contain at least 8 characters.",
-                "error"
-            )
-
-            return render_template("register.html")
-
+            flash("Your password must contain at least 8 characters.", "error")
+            return render_template("register.html"), 400
         if account_type not in {"donor", "ngo"}:
+            flash("Invalid account type.", "error")
+            return render_template("register.html"), 400
+        if User.query.filter_by(email=email).first():
+            flash("An account with this email already exists.", "error")
+            return render_template("register.html"), 400
 
-            flash(
-                "Invalid account type.",
-                "error"
-            )
-
-            return render_template("register.html")
-
-        # Prevent duplicate accounts
-
-        existing_user = User.query.filter_by(
-            email=email
-        ).first()
-
-        if existing_user:
-
-            flash(
-                "An account with this email already exists.",
-                "error"
-            )
-
-            return render_template("register.html")
-
-        # Create user account
-
-        user = User(
-            name=name,
-            email=email
-        )
-
+        user = User(name=name, email=email)
         user.set_password(password)
 
-        # Create an NGO registration if requested.
-        # NGO descriptions are displayed on the public Affiliated NGOs page.
-
         if account_type == "ngo":
+            ngo_name = request.form.get("ngo_name", "").strip()
+            ngo_location = request.form.get("ngo_location", "").strip()
+            ngo_description = request.form.get("ngo_description", "").strip()
+            legal_form = request.form.get("ngo_legal_form", "").strip()
+            registration_number = request.form.get("ngo_registration_number", "").strip()
+            registration_authority = request.form.get("ngo_registration_authority", "").strip()
+            evidence_url = request.form.get("ngo_evidence_url", "").strip()
 
-            ngo_name = request.form.get(
-                "ngo_name",
-                ""
-            ).strip()
-
-            ngo_location = request.form.get(
-                "ngo_location",
-                ""
-            ).strip()
-
-            ngo_description = request.form.get(
-                "ngo_description",
-                ""
-            ).strip()
-
-            ngo_legal_form = request.form.get("ngo_legal_form", "").strip()
-            ngo_registration_number = request.form.get(
-                "ngo_registration_number", ""
-            ).strip()
-            ngo_registration_authority = request.form.get(
-                "ngo_registration_authority", ""
-            ).strip()
-            ngo_evidence_url = request.form.get("ngo_evidence_url", "").strip()
-
-            if not all([
-                ngo_name,
-                ngo_location,
-                ngo_description,
-                ngo_legal_form,
-                ngo_registration_number,
-                ngo_registration_authority,
-                ngo_evidence_url,
-            ]):
-
-             if not ngo_evidence_url.lower().startswith(("https://", "http://")):
-                flash(
-                    "Enter a valid HTTP/HTTPS link to the supporting evidence.",
-                    "error"
-                )
-
+            if not all([ngo_name, ngo_location, ngo_description, legal_form,
+                        registration_number, registration_authority, evidence_url]):
+                flash("Please complete all organisation details and verification evidence fields.", "error")
                 return render_template("register.html"), 400
-            if (
-                len(ngo_legal_form) > 60
-                or len(ngo_registration_number) > 120
-                or len(ngo_registration_authority) > 150
-                or len(ngo_evidence_url) > 500
-            ):
-                flash("One or more NGO verification fields is too long.", "error")
+            if not evidence_url.lower().startswith(("https://", "http://")):
+                flash("Enter a valid HTTP/HTTPS link to the supporting evidence.", "error")
                 return render_template("register.html"), 400
-                legal_form=ngo_legal_form,
-                registration_number=ngo_registration_number,
-                registration_authority=ngo_registration_authority,
-                evidence_url=ngo_evidence_url,
-
-            if len(ngo_name) > 180:
-
-                flash(
-                    "The NGO name must be 180 characters or fewer.",
-                    "error"
-                )
-
-                return render_template("register.html"), 400
-
-            if len(ngo_location) > 180:
-
-                flash(
-                    "The NGO location must be 180 characters or fewer.",
-                    "error"
-                )
-
-                return render_template("register.html"), 400
-
-            if len(ngo_description) > 600:
-
-                flash(
-                    "The NGO description must be 600 characters or fewer.",
-                    "error"
-                )
-
+            if (len(ngo_name) > 180 or len(ngo_location) > 180 or
+                    len(ngo_description) > 600 or len(legal_form) > 60 or
+                    len(registration_number) > 120 or len(registration_authority) > 150 or
+                    len(evidence_url) > 500):
+                flash("One or more organisation fields exceeds its length limit.", "error")
                 return render_template("register.html"), 400
 
             ngo = NGO(
@@ -371,41 +934,27 @@ def register():
                 email=email,
                 location=ngo_location,
                 description=ngo_description,
-                status="pending"
+                status="pending",
+                legal_form=legal_form,
+                registration_number=registration_number,
+                registration_authority=registration_authority,
+                evidence_url=evidence_url,
             )
-
             db.session.add(ngo)
-
-            # Assign the database ID before linking the user.
-
             db.session.flush()
-
             user.role = "ngo_staff"
             user.ngo = ngo
-
         else:
-
             user.role = "donor"
 
         db.session.add(user)
-
         db.session.commit()
-
         login_user(user)
 
         if user.role == "ngo_staff":
-
-            flash(
-                "Your NGO registration is awaiting administrator approval.",
-                "success"
-            )
-
+            flash("Your NGO registration is awaiting administrator approval.", "success")
         else:
-
-            flash(
-                "Your account has been created successfully.",
-                "success"
-            )
+            flash("Your account has been created successfully.", "success")
 
         return redirect(url_for("dashboard"))
 
@@ -556,6 +1105,60 @@ def dashboard():
         donations=donations
     )
 
+@app.route("/ngo/campaigns/<int:campaign_id>/needs", methods=["GET", "POST"])
+@login_required
+def edit_campaign_needs(campaign_id):
+    require_role("ngo_staff")
+    ngo = get_approved_ngo(current_user)
+    if not ngo:
+        abort(403)
+
+    campaign = Campaign.query.filter_by(
+        id=campaign_id,
+        ngo_id=ngo.id
+    ).first_or_404()
+
+    if request.method == "POST":
+        import re
+        raw = request.form.get("required_items", "").strip()
+        rows = []
+        seen = set()
+        allowed_names = {normalize_supply_name(name) for name in DEMO_PRODUCT_META}
+
+        for line in raw.splitlines():
+            if not line.strip():
+                continue
+            match = re.match(r"^\s*(.+?)\s*:\s*(\d+)\s*$", line)
+            if not match:
+                flash(f"Use the format Product (pack size): quantity. Problem line: {line}", "error")
+                return render_template("edit_campaign_needs.html", campaign=campaign, form_items=raw), 400
+
+            name = match.group(1).strip()
+            key = normalize_supply_name(name)
+            quantity = int(match.group(2))
+            if key not in allowed_names:
+                flash(f"'{name}' is not in this demo catalogue. Use one of the ten listed product names and pack sizes.", "error")
+                return render_template("edit_campaign_needs.html", campaign=campaign, form_items=raw), 400
+            if key in seen:
+                flash(f"'{name}' appears more than once. Combine it into one line.", "error")
+                return render_template("edit_campaign_needs.html", campaign=campaign, form_items=raw), 400
+            if not 1 <= quantity <= 1000000:
+                flash("Each requirement must be from 1 to 1,000,000 units.", "error")
+                return render_template("edit_campaign_needs.html", campaign=campaign, form_items=raw), 400
+            seen.add(key)
+            rows.append(f"{name}: {quantity}")
+
+        if not rows:
+            flash("Add at least one campaign requirement.", "error")
+            return render_template("edit_campaign_needs.html", campaign=campaign, form_items=raw), 400
+
+        campaign.required_items = "\n".join(rows)
+        campaign.last_verified_at = datetime.utcnow()
+        db.session.commit()
+        flash("Campaign requirements updated. The tracker and product picker now use these quantities.", "success")
+        return redirect(url_for("campaign_detail", campaign_id=campaign.id))
+
+    return render_template("edit_campaign_needs.html", campaign=campaign)
 
 # ==========================================
 # ADMINISTRATOR: NGO APPROVAL
@@ -682,37 +1285,90 @@ def campaigns():
         selected_ngo=selected_ngo
     )
 
+def campaign_supply_summary(campaign):
+    import re
+    from collections import defaultdict
+
+    requirements = []
+    for line in (campaign.required_items or "").splitlines():
+        match = re.match(r"^\s*(.+?)\s*:\s*(\d+)\s*$", line)
+        if match and int(match.group(2)) > 0:
+            requirements.append({
+                "name": match.group(1).strip(),
+                "required": int(match.group(2)),
+            })
+
+    accepted_by_name = defaultdict(int)
+    committed_by_name = defaultdict(int)
+    donations = Donation.query.filter_by(campaign_id=campaign.id).all()
+
+    for donation in donations:
+        # The in-kind tracker reflects physical donations only. Vendor-procurement
+        # requests are tracked against product_catalog in campaign_procurement_summary.
+        if donation.delivery_method == "vendor_procurement":
+            continue
+        if donation.status in {"cancelled", "rejected"}:
+            continue
+        for item in donation.items:
+            key = normalize_supply_name(item.item_name)
+            if donation.status == "verified" and item.accepted_qty is not None:
+                accepted_by_name[key] += max(0, item.accepted_qty)
+            elif donation.status in {"offered", "accepted", "awaiting_confirmation", "received"}:
+                committed_by_name[key] += max(0, item.declared_qty or 0)
+
+    result = []
+    for need in requirements:
+        key = normalize_supply_name(need["name"])
+        required = need["required"]
+        accepted = accepted_by_name[key]
+        committed = committed_by_name[key]
+        available = max(0, required - accepted - committed)
+        percent = min(100, round(accepted * 100 / required))
+
+        if accepted >= required:
+            status = "Target reached"
+        elif available == 0:
+            status = "Fully committed — awaiting delivery"
+        elif accepted / required >= 0.9:
+            status = "Almost fulfilled"
+        elif accepted:
+            status = "In progress"
+        else:
+            status = "Needs supplies"
+
+        result.append({
+            "name": need["name"],
+            "required": required,
+            "accepted": accepted,
+            "committed": committed,
+            "available": available,
+            "percent": percent,
+            "status": status,
+        })
+
+    return result
+
 # ==========================================
 # PUBLIC CAMPAIGN DETAILS
 # ==========================================
 
 @app.route("/campaigns/<int:campaign_id>")
 def campaign_detail(campaign_id):
-
-    campaign = db.session.get(
-        Campaign,
-        campaign_id
-    )
-
+    campaign = db.session.get(Campaign, campaign_id)
     if not campaign:
         abort(404)
-
-    # Only active campaigns are publicly accessible.
-
     if campaign.status != "active":
         abort(404)
-
-    # Only campaigns belonging to approved NGOs are public.
-
     if not campaign.ngo or campaign.ngo.status != "approved":
         abort(404)
 
-    inventory = campaign_inventory(campaign)
     return render_template(
         "campaign_detail.html",
         campaign=campaign,
-        inventory=inventory,
-        has_open_needs=any(row["remaining"] > 0 for row in inventory),
+        supply_summary=campaign_supply_summary(campaign),
+        products=campaign_product_options(campaign),
+        inkind_products=campaign_inkind_options(campaign),
+        packaging_steps=campaign_packaging_steps(campaign),
     )
 
 
@@ -723,174 +1379,105 @@ def campaign_detail(campaign_id):
 @app.route("/campaigns/new", methods=["GET", "POST"])
 @login_required
 def create_campaign():
-
     require_role("ngo_staff")
-
     ngo = get_approved_ngo(current_user)
-
     if not ngo:
-
-        flash(
-            "Your NGO must be approved before creating campaigns.",
-            "error"
-        )
-
+        flash("Your NGO must be approved before creating campaigns.", "error")
         return redirect(url_for("dashboard"))
 
     emergency_types = [
-        "Natural disaster",
-        "Food insecurity",
-        "Infrastructure collapse",
-        "Civil unrest humanitarian relief",
-        "Emergency preparedness",
+        "Natural disaster", "Food insecurity", "Infrastructure collapse",
+        "Civil unrest humanitarian relief", "Emergency preparedness",
         "Other humanitarian emergency",
     ]
 
     if request.method == "POST":
-
-        title = request.form.get(
-            "title",
-            ""
-        ).strip()
-
-        emergency_type = request.form.get(
-            "emergency_type",
-            ""
-        ).strip()
-
-        location = request.form.get(
-            "location",
-            ""
-        ).strip()
-
-        description = request.form.get(
-            "description",
-            ""
-        ).strip()
-
-        required_items = request.form.get(
-            "required_items",
-            ""
-        ).strip()
-
+        title = request.form.get("title", "").strip()
+        emergency_type = request.form.get("emergency_type", "").strip()
+        location = request.form.get("location", "").strip()
+        # Preserve the old description because the editor no longer
+        # displays a separate Main campaign description field.
+        description = campaign.description or ""
+        required_items = request.form.get("required_items", "").strip()
         evidence_summary = request.form.get("evidence_summary", "").strip()
         evidence_url = request.form.get("evidence_url", "").strip()
         needs_source = request.form.get("needs_source", "").strip()
 
-        if not all([
-            title,
-            emergency_type,
-            location,
-            description,
-            required_items
-        ]):
-
-            flash(
-                "Please complete all required fields.",
-                "error"
-            )
-
-        elif emergency_type not in emergency_types:
-
-            flash(
-                "Please select a valid emergency category.",
-                "error"
-            )
-
-        else:
-
-         if not evidence_url.lower().startswith(("https://", "http://")):
-                flash("Enter a valid HTTP/HTTPS link for campaign evidence.", "error")
-                return render_template("create_campaign.html", emergency_types=emergency_types), 400
-
+        if not all([title, emergency_type, location]):
+            flash("Complete the campaign title, category, and location.", "error")
+            return render_template("create_campaign.html", emergency_types=emergency_types), 400
+        if emergency_type not in emergency_types:
+            flash("Please select a valid emergency category.", "error")
+            return render_template("create_campaign.html", emergency_types=emergency_types), 400
+        if len(title) > 180 or len(location) > 200 or len(description) > 5000:
+            flash("The title, location, or description exceeds its length limit.", "error")
+            return render_template("create_campaign.html", emergency_types=emergency_types), 400
+        if not evidence_url.lower().startswith(("https://", "http://")):
+            flash("Enter a valid HTTP/HTTPS link for campaign evidence.", "error")
+            return render_template("create_campaign.html", emergency_types=emergency_types), 400
+        if len(evidence_summary) > 2000 or len(evidence_url) > 500 or len(needs_source) > 180:
+            flash("One or more campaign evidence fields is too long.", "error")
+            return render_template("create_campaign.html", emergency_types=emergency_types), 400
         try:
-                parse_campaign_requirements(required_items)
+            parse_campaign_requirements(required_items)
         except ValueError as error:
-                flash(str(error), "error")
-                return render_template("create_campaign.html", emergency_types=emergency_types), 400
-        
-        campaign = Campaign (
-                title=title,
-                emergency_type=emergency_type,
-                location=location,
-                description=description,
-                required_items=required_items,
-                status="pending",
-                ngo_id=ngo.id,
-                last_verified_at=datetime.utcnow(),
-                evidence_summary=evidence_summary,
-                evidence_url=evidence_url,
-                needs_source=needs_source
-            )
+            flash(str(error), "error")
+            return render_template("create_campaign.html", emergency_types=emergency_types), 400
 
+        campaign = Campaign(
+            title=title,
+            emergency_type=emergency_type,
+            location=location,
+            description=description,
+            required_items=required_items,
+            status="pending",
+            ngo_id=ngo.id,
+            last_verified_at=datetime.utcnow(),
+            evidence_summary=evidence_summary,
+            evidence_url=evidence_url,
+            needs_source=needs_source,
+        )
         db.session.add(campaign)
-
         db.session.commit()
-
-        flash(
-                "Campaign submitted for administrator approval.",
-                "success"
-            )
-
+        flash("Campaign submitted for administrator approval.", "success")
         return redirect(url_for("dashboard"))
 
-    return render_template(
-        "create_campaign.html",
-        emergency_types=emergency_types
-    )
+    return render_template("create_campaign.html", emergency_types=emergency_types)
 
 
 # ==========================================
 # ADMINISTRATOR: CAMPAIGN APPROVAL
 # ==========================================
 
-@app.route(
-    "/admin/campaigns/<int:campaign_id>/approve",
-    methods=["POST"]
-)
+@app.route("/admin/campaigns/<int:campaign_id>/approve", methods=["POST"])
 @login_required
 def approve_campaign(campaign_id):
-
     require_role("admin")
-
-    campaign = db.session.get(
-        Campaign,
-        campaign_id
-    )
-
+    campaign = db.session.get(Campaign, campaign_id)
     if not campaign:
         abort(404)
-
     if not campaign.ngo or campaign.ngo.status != "approved":
         flash("The organisation must be approved first.", "error")
+        return redirect(url_for("dashboard"))
+    if not all([campaign.evidence_summary, campaign.evidence_url, campaign.needs_source]):
+        flash("This campaign has not supplied all required evidence details.", "error")
+        return redirect(url_for("dashboard"))
+    if not campaign.evidence_url.lower().startswith(("https://", "http://")):
+        flash("The campaign evidence link must use HTTP or HTTPS.", "error")
+        return redirect(url_for("dashboard"))
+    try:
+        parse_campaign_requirements(campaign.required_items)
+    except ValueError as error:
+        flash(f"Campaign needs are not valid: {error}", "error")
         return redirect(url_for("dashboard"))
 
     location_checked = request.form.get("review_location_checked") == "on"
     requirements_checked = request.form.get("review_requirements_checked") == "on"
     evidence_checked = request.form.get("review_evidence_checked") == "on"
     review_notes = request.form.get("review_notes", "").strip()
-
-    if not all([campaign.evidence_summary, campaign.evidence_url, campaign.needs_source]):
-        flash("This campaign has not supplied all required evidence details.", "error")
-        return redirect(url_for("dashboard"))
-
-    if not campaign.evidence_url.lower().startswith(("https://", "http://")):
-        flash("The campaign evidence link must use HTTP or HTTPS.", "error")
-        return redirect(url_for("dashboard"))
-
-    try:
-        def parse_campaign_requirements():
-            ...
-
-        parse_campaign_requirements(campaign.required_items)
-    except ValueError as error:
-        flash(f"Campaign needs are not valid: {error}", "error")
-        return redirect(url_for("dashboard"))
-
     if not all([location_checked, requirements_checked, evidence_checked]):
         flash("Complete all three campaign checks before approving this campaign.", "error")
         return redirect(url_for("dashboard"))
-
     if not review_notes:
         flash("Add a short note describing the basis for this campaign review.", "error")
         return redirect(url_for("dashboard"))
@@ -902,11 +1489,10 @@ def approve_campaign(campaign_id):
     campaign.reviewed_at = datetime.utcnow()
     campaign.status = "active"
     campaign.last_verified_at = datetime.utcnow()
-
     db.session.commit()
-
     flash("Campaign approved. The verification checklist has been recorded.", "success")
     return redirect(url_for("dashboard"))
+
 
 
 @app.route(
@@ -1087,7 +1673,7 @@ def parse_campaign_requirements(raw_text):
         if not line:
             continue
 
-        match = re.fullmatch(r"(.{1,120}?)\s*:\s*(\d{1,5})", line)
+        match = re.fullmatch(r"(.{1,120}?)\s*:\s*(\d{1,7})", line)
         if not match:
             raise ValueError(
                 f"Requirement line {line_number} must use 'Item name: quantity', "
@@ -1096,19 +1682,19 @@ def parse_campaign_requirements(raw_text):
 
         name = match.group(1).strip()
         quantity = int(match.group(2))
-        key = normalize_item_name(name)
+        key = normalize_supply_name(name)
 
         if not key:
             raise ValueError(f"Requirement line {line_number} has no item name.")
-        if quantity < 1 or quantity > 10000:
-            raise ValueError("Each requirement must be between 1 and 10,000 units.")
+        if quantity < 1 or quantity > 1000000:
+            raise ValueError("Each requirement must be between 1 and 1,000,000 units.")
         if key in seen:
             raise ValueError(f"The item '{name}' is listed more than once. Combine it into one line.")
 
         seen.add(key)
         requirements.append({
             "name": name,
-            "key": key,
+            "key": normalize_supply_name(name),
             "required": quantity,
         })
 
@@ -1142,7 +1728,7 @@ def campaign_inventory(campaign):
             continue
 
         for item in donation.items:
-            key = normalize_item_name(item.item_name)
+            key = normalize_supply_name(item.item_name)
             if key not in totals:
                 continue
 
@@ -1179,7 +1765,7 @@ def validate_items_against_campaign(campaign, items_data, inventory=None):
     totals_requested = {}
 
     for row in items_data:
-        key = normalize_item_name(row["name"])
+        key = normalize_supply_name(row["name"])
         if key not in by_key:
             raise ValueError(
                 f"'{row['name']}' is not a listed requirement for this campaign. Select an item from the list."
@@ -1211,7 +1797,7 @@ def offline_surplus_warnings(campaign, items_data):
     by_key = {row["key"]: row for row in inventory}
     incoming = {}
     for row in items_data:
-        key = normalize_item_name(row["name"])
+        key = normalize_supply_name(row["name"])
         incoming[key] = incoming.get(key, 0) + row["quantity"]
 
     warnings = []
@@ -1258,17 +1844,12 @@ def donation_access_allowed(donation):
 # DONOR: REGISTER AN ONLINE DONATION
 # ==========================================
 
-@app.route(
-    "/campaigns/<int:campaign_id>/donate",
-    methods=["GET", "POST"]
-)
+@app.route("/campaigns/<int:campaign_id>/donate", methods=["GET", "POST"])
 @login_required
 def donate_to_campaign(campaign_id):
-
     require_role("donor")
 
     campaign = db.session.get(Campaign, campaign_id)
-    campaign = Campaign.query.filter_by(id=campaign_id).with_for_update().first_or_404()
     if (
         not campaign
         or campaign.status != "active"
@@ -1277,117 +1858,199 @@ def donate_to_campaign(campaign_id):
     ):
         abort(404)
 
-    inventory = campaign_inventory(campaign)
+    products = campaign_product_options(campaign)
 
-    if request.method == "POST":
+    if request.method == "GET":
+        return redirect(url_for("campaign_detail", campaign_id=campaign.id) + "#campaign-donations")
 
-        try:
-            items_data = collect_donation_items()
-            items_data = validate_items_against_campaign(
-                campaign, items_data, inventory
-            )
-        except ValueError as error:
-            flash(str(error), "error")
-            return render_template(
-                "donation_form.html",
-                campaign=campaign,
-                inventory=campaign_inventory(campaign),
-                has_open_needs=any(
-                    row["remaining"] > 0 for row in campaign_inventory(campaign)
-                ),
-            ), 400
+    phase = request.form.get("phase", "review").strip()
 
-        delivery_method = request.form.get(
-            "delivery_method",
-            "drop_off"
-        )
-
-        if delivery_method not in {
-            "drop_off",
-            "collection_request"
-        }:
-            flash("Select a valid delivery method.", "error")
-
-            return render_template(
-                "donation_form.html",
-                campaign=campaign
-            ), 400
-
-        notes = request.form.get("notes", "").strip()
-
-        if len(notes) > 1000:
-            flash("Notes must be under 1,000 characters.", "error")
-
-            return render_template(
-                "donation_form.html",
-                campaign=campaign
-            ), 400
-
-        donation = Donation(
-            code=generate_donation_code(),
-            donor_id=current_user.id,
-            created_by_id=current_user.id,
-            ngo_id=campaign.ngo_id,
-            campaign_id=campaign.id,
-            source="online",
-            status="offered",
-            delivery_method=delivery_method,
-            notes=notes
-        )
-
-        db.session.add(donation)
-
-        db.session.flush()
-
-        for item_data in items_data:
-
-            item = DonationItem(
-                donation_id=donation.id,
-                item_name=item_data["name"],
-                declared_qty=item_data["quantity"],
-                condition=item_data["condition"],
-                received_qty=None,
-                accepted_qty=None
-            )
-
-            db.session.add(item)
-
-        record_event(
-            donation,
-            "offer_submitted",
-            "Donor submitted a donation offer.",
-            current_user.id
-        )
-
-        db.session.commit()
-
-        try:
-            create_donation_qr(donation)
-        except Exception:
-            app.logger.exception(
-                "QR generation failed for %s",
-                donation.code
-            )
-
-        flash(
-            "Your donation offer has been registered.",
-            "success"
-        )
-
+    try:
+        # Recalculate quantities, availability, and totals on the server.
+        items_data, total = get_selected_campaign_products(campaign)
+    except ValueError as error:
+        flash(str(error), "error")
         return redirect(
-            url_for(
-                "donation_passport",
-                code=donation.code
-            )
+            url_for("campaign_detail", campaign_id=campaign.id) + "#campaign-donations"
         )
 
-    inventory = campaign_inventory(campaign)
-    return render_template(
-        "donation_form.html",
-        campaign=campaign,
-        inventory=inventory,
-        has_open_needs=any(row["remaining"] > 0 for row in inventory),
+    if phase == "review":
+        return render_template(
+            "demo_checkout.html",
+            campaign=campaign,
+            items=items_data,
+            total=total,
+        )
+
+    if phase != "confirm":
+        abort(400)
+
+    payment_method = request.form.get("payment_method", "upi").strip()
+    if payment_method not in {"upi", "card", "netbanking"}:
+        abort(400)
+
+    # This records a pending vendor-procurement request only.
+    # It does not represent a payment and does not call a payment provider.
+    internal_note = (
+        f"Vendor procurement request; displayed basket value ₹{total:,}; "
+        f"selected checkout method: {payment_method}; payment is not processed. "
+        "Supplies remain pending procurement and NGO receipt verification."
     )
+
+    donation = Donation(
+        code=generate_donation_code(),
+        donor_id=current_user.id,
+        created_by_id=current_user.id,
+        ngo_id=campaign.ngo_id,
+        campaign_id=campaign.id,
+        source="online",
+        status="offered",
+        delivery_method="vendor_procurement",
+        notes=internal_note,
+    )
+    db.session.add(donation)
+    db.session.flush()
+
+    for item_data in items_data:
+        db.session.add(DonationItem(
+            donation_id=donation.id,
+            item_name=item_data["name"],
+            declared_qty=item_data["quantity"],
+            condition="good",
+            received_qty=None,
+            accepted_qty=None,
+        ))
+
+    record_event(
+        donation,
+        "offer_submitted",
+        (
+            f"Vendor-procurement request recorded for basket value ₹{total:,}. "
+            "Items are pending procurement and NGO verification; no payment was processed."
+        ),
+        current_user.id,
+    )
+    db.session.commit()
+
+    try:
+        create_donation_qr(donation)
+    except Exception:
+        app.logger.exception("QR generation failed for %s", donation.code)
+
+    flash(
+        "Your contribution request has been recorded.",
+        "success",
+    )
+    return redirect(url_for("donation_passport", code=donation.code))
+  
+
+
+# ==========================================
+# DONOR: REGISTER A PHYSICAL IN-KIND DONATION
+# ==========================================
+
+@app.route("/campaigns/<int:campaign_id>/donate-in-kind", methods=["POST"])
+@login_required
+def donate_in_kind_to_campaign(campaign_id):
+    require_role("donor")
+    campaign = db.session.get(Campaign, campaign_id)
+    if (
+        not campaign
+        or campaign.status != "active"
+        or not campaign.ngo
+        or campaign.ngo.status != "approved"
+    ):
+        abort(404)
+
+    delivery_method = request.form.get("delivery_method", "drop_off").strip()
+    if delivery_method not in {"drop_off", "collection_request"}:
+        abort(400)
+
+    products = campaign_inkind_options(campaign)
+    if not products:
+        flash("This campaign has no available physical supply needs yet.", "error")
+        return redirect(url_for("campaign_detail", campaign_id=campaign.id) + "#campaign-donations")
+
+    items_data = []
+    requested_by_key = {}
+    try:
+        for product in products:
+            raw = request.form.get(f"inkind_qty_{product['index']}", "0").strip()
+            try:
+                quantity = int(raw or "0")
+            except ValueError:
+                raise ValueError(f"Enter a whole-number quantity for {product['name']}.")
+            if quantity < 0 or quantity > 10000:
+                raise ValueError("Each physical supply quantity must be between 0 and 10,000.")
+            available = max(0, int(product["available"]))
+            if quantity > available:
+                raise ValueError(f"Only {available} more unit(s) of {product['name']} are listed as available.")
+            if quantity == 0:
+                continue
+            key = normalize_supply_name(product["name"])
+            requested_by_key[key] = requested_by_key.get(key, 0) + quantity
+            items_data.append({
+                "name": product["name"],
+                "quantity": quantity,
+                "condition": "good",
+            })
+    except ValueError as error:
+        flash(str(error), "error")
+        return redirect(url_for("campaign_detail", campaign_id=campaign.id) + "#campaign-donations")
+
+    if not items_data:
+        flash("Choose a quantity for at least one physical supply.", "error")
+        return redirect(url_for("campaign_detail", campaign_id=campaign.id) + "#campaign-donations")
+
+    # Refresh the database snapshot immediately before creating the commitment.
+    # The current prototype does not reserve stock transactionally across concurrent requests.
+    inventory = {normalize_supply_name(row["name"]): row for row in campaign_supply_summary(campaign)}
+    for key, quantity in requested_by_key.items():
+        need = inventory.get(key)
+        if not need or quantity > int(need["available"]):
+            available = int(need["available"]) if need else 0
+            flash(f"Availability changed. Only {available} unit(s) remain for this item; please review your quantities.", "error")
+            return redirect(url_for("campaign_detail", campaign_id=campaign.id) + "#campaign-donations")
+
+    delivery_label = "donor drop-off" if delivery_method == "drop_off" else "pickup requested; awaiting NGO confirmation"
+    donation = Donation(
+        code=generate_donation_code(),
+        donor_id=current_user.id,
+        created_by_id=current_user.id,
+        ngo_id=campaign.ngo_id,
+        campaign_id=campaign.id,
+        source="online",
+        status="offered",
+        delivery_method=delivery_method,
+        notes=f"Physical in-kind donation. Delivery preference: {delivery_label}.",
+    )
+    db.session.add(donation)
+    db.session.flush()
+    for item_data in items_data:
+        db.session.add(DonationItem(
+            donation_id=donation.id,
+            item_name=item_data["name"],
+            declared_qty=item_data["quantity"],
+            condition="good",
+            received_qty=None,
+            accepted_qty=None,
+        ))
+
+    event_note = "Physical in-kind supply offer submitted."
+    if delivery_method == "collection_request":
+        event_note += " Pickup requested; this request is not yet confirmed."
+    else:
+        event_note += " Donor plans to deliver the supplies."
+    record_event(donation, "inkind_offer_submitted", event_note, current_user.id)
+    db.session.commit()
+
+    try:
+        create_donation_qr(donation)
+    except Exception:
+        app.logger.exception("QR generation failed for physical donation %s", donation.code)
+
+    flash("Your physical in-kind donation has been registered. You can print its QR label from the Donation Passport.", "success")
+    return redirect(url_for("donation_passport", code=donation.code))
 
 
 # ==========================================
@@ -1852,6 +2515,10 @@ def update_donation_stage(code):
         ngo_id=ngo.id
     ).first_or_404()
 
+    if donation.delivery_method == "vendor_procurement":
+        flash("Use the product progress controls for vendor-procured contributions.", "info")
+        return redirect(url_for("donation_passport", code=donation.code))
+
     if donation.status != "verified":
         flash(
             "Verify the donation before recording later stages.",
@@ -1939,6 +2606,121 @@ def update_donation_stage(code):
             code=donation.code
         )
     )
+
+# ==========================================
+# NGO: RECORD VENDOR-PROCUREMENT PROGRESS
+# ==========================================
+
+@app.route("/ngo/donations/<code>/procurement-stage", methods=["POST"])
+@login_required
+def update_procurement_stage(code):
+    require_role("ngo_staff")
+    ngo = get_approved_ngo(current_user)
+    if not ngo:
+        abort(403)
+
+    donation = Donation.query.filter_by(code=code, ngo_id=ngo.id).first_or_404()
+    if donation.delivery_method != "vendor_procurement":
+        abort(400)
+    if donation.status in {"cancelled", "rejected"}:
+        flash("Cancelled or rejected requests cannot be progressed.", "error")
+        return redirect(url_for("donation_passport", code=donation.code))
+
+    stage = request.form.get("stage", "").strip()
+    note = request.form.get("note", "").strip()
+    allowed_stages = {
+        "procurement_started", "procured", "sorted", "allocated",
+        "dispatched", "delivery_confirmed", "distribution_reported",
+        "reached_recipients",
+    }
+    if stage not in allowed_stages:
+        abort(400)
+    if len(note) > 500:
+        flash("The update note must be 500 characters or fewer.", "error")
+        return redirect(url_for("donation_passport", code=donation.code))
+
+    distribution_stages = {"distribution_reported", "reached_recipients"}
+    if stage in distribution_stages and donation.status != "verified":
+        flash("Confirm delivery and accepted quantities before recording distribution.", "error")
+        return redirect(url_for("donation_passport", code=donation.code))
+
+    event_note = note
+    if stage == "delivery_confirmed" and donation.status != "verified":
+        # The authorised staff member is confirming that every selected quantity has arrived
+        # and is accepted. If quantities differ, do not use this action; record the issue first.
+        now = datetime.utcnow()
+        for item in donation.items:
+            item.received_qty = int(item.declared_qty or 0)
+            item.accepted_qty = int(item.declared_qty or 0)
+            item.rejection_reason = ""
+        donation.status = "verified"
+        donation.received_at = now
+        event_note = (
+            "NGO confirmed delivery and acceptance of all selected quantities. "
+            + (note if note else "")
+        ).strip()
+
+    record_event(donation, stage, event_note, current_user.id)
+    db.session.commit()
+    flash("Product progress update recorded.", "success")
+    return redirect(url_for("donation_passport", code=donation.code))
+
+
+@app.route("/ngo/donations/<code>/quick-update", methods=["POST"])
+@login_required
+def qr_quick_update(code):
+    require_role("ngo_staff")
+    ngo = get_approved_ngo(current_user)
+    if not ngo:
+        abort(403)
+
+    donation = Donation.query.filter_by(code=code, ngo_id=ngo.id).first_or_404()
+    if donation.delivery_method == "vendor_procurement":
+        flash("Use the product progress controls for vendor-procured contributions.", "info")
+        return redirect(url_for("donation_passport", code=code))
+
+    action = request.form.get("action", "").strip()
+    note = request.form.get("note", "").strip()
+    people_text = request.form.get("people_assisted", "").strip()
+    if len(note) > 500:
+        flash("Optional note must be 500 characters or fewer.", "error")
+        return redirect(url_for("donation_passport", code=code))
+
+    if action == "received":
+        if donation.status == "verified":
+            flash("This physical donation has already been verified.", "info")
+            return redirect(url_for("donation_passport", code=code))
+        return redirect(url_for("verify_donation", code=code))
+
+    if action == "distributed":
+        if donation.status != "verified":
+            flash("Verify received and accepted quantities before distribution.", "error")
+            return redirect(url_for("donation_passport", code=code))
+        if any(event.event_type == "distribution_reported" for event in donation.events):
+            flash("Distribution has already been recorded for this donation.", "error")
+            return redirect(url_for("donation_passport", code=code))
+
+        people = None
+        if people_text:
+            try:
+                people = int(people_text)
+                if not 0 <= people <= 1000000:
+                    raise ValueError
+            except ValueError:
+                flash("People assisted must be a whole number from 0 to 1,000,000.", "error")
+                return redirect(url_for("donation_passport", code=code))
+
+        details = "Distribution recorded by authorised NGO staff."
+        if people is not None:
+            details += f" People assisted (reported): {people}."
+        if note:
+            details += f" Note: {note}"
+        record_event(donation, "distribution_reported", details, current_user.id)
+        db.session.commit()
+        flash("Distribution event recorded.", "success")
+        return redirect(url_for("donation_passport", code=code))
+
+    abort(400)
 
 
 # ==========================================
@@ -2031,71 +2813,30 @@ def donation_passport(code):
 
 @app.route("/scan/<code>")
 def scan_donation(code):
+    donation = Donation.query.filter_by(code=code).first_or_404()
 
-    donation = Donation.query.filter_by(
-        code=code
-    ).first_or_404()
+    if current_user.is_authenticated and current_user.role == "ngo_staff" and current_user.ngo_id == donation.ngo_id:
+        if donation.delivery_method != "vendor_procurement" and donation.status != "verified":
+            return redirect(url_for("verify_donation", code=donation.code))
+        return redirect(url_for("donation_passport", code=donation.code))
 
-    # The associated NGO can open intake verification directly.
+    if (current_user.is_authenticated and current_user.role == "donor"
+            and current_user.id == donation.donor_id):
+        return redirect(url_for("donation_passport", code=donation.code))
 
-    if (
-        current_user.is_authenticated
-        and current_user.role == "ngo_staff"
-        and current_user.ngo_id == donation.ngo_id
-        and donation.status != "verified"
-    ):
+    if current_user.is_authenticated and current_user.role == "admin":
+        return redirect(url_for("donation_passport", code=donation.code))
 
-        return redirect(
-            url_for(
-                "verify_donation",
-                code=donation.code
-            )
-        )
-
-    # Owners see their full Donation Passport.
-
-    if (
-        current_user.is_authenticated
-        and current_user.role == "donor"
-        and current_user.id == donation.donor_id
-    ):
-
-        return redirect(
-            url_for(
-                "donation_passport",
-                code=donation.code
-            )
-        )
-
-    if (
-        current_user.is_authenticated
-        and (
-            current_user.role == "admin"
-            or (
-                current_user.role == "ngo_staff"
-                and current_user.ngo_id == donation.ngo_id
-            )
-        )
-    ):
-
-        return redirect(
-            url_for(
-                "donation_passport",
-                code=donation.code
-            )
-        )
-
-    # A QR link acts as a read-only receipt.
-    # No donor email, phone number, or other personal data is exposed.
-
+    # Public QR access is read-only; passport template hides private information.
     return render_template(
         "donation_passport.html",
         donation=donation,
         events=donation.events,
         public_view=True,
         can_manage=False,
-        qr_image_url=get_qr_image_url(donation)
+        qr_image_url=get_qr_image_url(donation),
     )
+
 
 # ==========================================
 # NGO: LOOK UP DONATION USING PRINTED ID
@@ -2213,6 +2954,196 @@ def ngo_campaigns():
         campaigns=campaigns
     )
 
+# ==========================================
+# NGO: EDIT AN EXISTING CAMPAIGN
+# ==========================================
+
+@app.route(
+    "/ngo/campaigns/<int:campaign_id>/edit",
+    methods=["GET", "POST"],
+)
+@login_required
+def edit_campaign(campaign_id):
+    require_role("ngo_staff")
+    ngo = get_approved_ngo(current_user)
+    if not ngo:
+        abort(403)
+
+    campaign = Campaign.query.filter_by(
+        id=campaign_id,
+        ngo_id=ngo.id,
+    ).first_or_404()
+
+    emergency_types = [
+        "Natural disaster",
+        "Food insecurity",
+        "Infrastructure collapse",
+        "Civil unrest humanitarian relief",
+        "Emergency preparedness",
+        "Other humanitarian emergency",
+    ]
+    form_values = request.form if request.method == "POST" else {}
+
+    def request_rows(kind, include_price):
+        names = request.form.getlist(f"{kind}_name")
+        quantities = request.form.getlist(f"{kind}_required_qty")
+        images = request.form.getlist(f"{kind}_image_url")
+        prices = request.form.getlist(f"{kind}_unit_price") if include_price else []
+        rows = []
+        for i, name in enumerate(names):
+            rows.append({
+                "name": name,
+                "required_qty": quantities[i] if i < len(quantities) else "",
+                "unit_price": prices[i] if include_price and i < len(prices) else "",
+                "image_url": images[i] if i < len(images) else "",
+                "index": i,
+            })
+        return rows
+
+    product_rows = (
+        request_rows("product", True)
+        if request.method == "POST"
+        else catalog_rows_for_editor(campaign, "product")
+    )
+    inkind_rows = (
+        request_rows("inkind", False)
+        if request.method == "POST"
+        else catalog_rows_for_editor(campaign, "inkind")
+    )
+
+    def render_editor(status=200):
+        response = render_template(
+            "edit_campaign.html",
+            campaign=campaign,
+            emergency_types=emergency_types,
+            form_values=form_values,
+            product_rows=product_rows,
+            inkind_rows=inkind_rows,
+            carousel_defaults=DEFAULT_CAROUSEL_IMAGES,
+            default_products_intro=DEFAULT_PRODUCTS_INTRO,
+            default_in_kind_intro=DEFAULT_IN_KIND_INTRO,
+            default_packaging_steps=DEFAULT_PACKAGING_STEPS,
+        )
+        return response, status
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        emergency_type = request.form.get("emergency_type", "").strip()
+        location = request.form.get("location", "").strip()
+        description = request.form.get("description", "").strip()
+        story_who_helping = request.form.get("story_who_helping", "").strip()
+        story_urgency = request.form.get("story_urgency", "").strip()
+        story_mission = request.form.get("story_mission", "").strip()
+        story_impact = request.form.get("story_impact", "").strip()
+        images = [request.form.get(f"carousel_image_{i}", "").strip() for i in range(1, 4)]
+        products_intro = request.form.get("products_intro", "").strip()
+        in_kind_intro = request.form.get("in_kind_intro", "").strip()
+        card_overview = request.form.get("card_overview", "").strip()
+        listing_image_url = request.form.get("listing_image_url", "").strip()
+        packaging_steps = request.form.get("packaging_steps", "").strip()
+
+        if not all([
+            title,
+            emergency_type,
+            location,
+        ]):
+            flash("Complete the campaign title, category, and location.", "error")
+            return render_editor(400)
+        
+        if len(title) > 180 or len(location) > 200:
+            flash("The title must be at most 180 characters and location at most 200 characters.", "error")
+            return render_editor(400)
+        if emergency_type not in emergency_types:
+            flash("Select a valid campaign category.", "error")
+            return render_editor(400)
+        if any(len(value) > 5000 for value in [description, story_who_helping, story_urgency, story_mission, story_impact, products_intro, in_kind_intro]):
+            flash("Descriptions and tab instructions must be 5,000 characters or fewer.", "error")
+            return render_editor(400)
+        for image_url in images:
+            if image_url and not image_url.startswith(("https://", "http://", "/static/")):
+                flash("Carousel images must use HTTP/HTTPS URLs or a /static/ path.", "error")
+                return render_editor(400)
+        if any(len(image_url) > 1000 for image_url in images):
+            flash("An image URL is too long.", "error")
+            return render_editor(400)
+
+        steps = [step.strip() for step in packaging_steps.splitlines() if step.strip()]
+        if len(steps) != 4:
+            flash("Enter exactly four packaging instructions, one per line.", "error")
+            return render_editor(400)
+        if any(len(step) > 1000 for step in steps):
+            flash("Each packaging instruction must be 1,000 characters or fewer.", "error")
+            return render_editor(400)
+        if not 200 <= len(card_overview) <= 300:
+            flash(
+                "The campaign overview must contain between 200 and 300 characters.",
+                "error",
+            )
+            return render_editor(400)
+
+        if listing_image_url and not listing_image_url.startswith(
+            ("https://", "http://", "/static/")
+        ):
+            flash(
+                "Use an HTTP/HTTPS image URL or a /static/ path for the campaign preview image.",
+                "error",
+            )
+            return render_editor(400)
+
+        if len(listing_image_url) > 1000:
+            flash(
+                "The campaign preview image URL is too long.",
+                "error",
+            )
+            return render_editor(400)
+        # Both lists are edited by NGO staff; no product names are hardcoded in the form.
+        try:
+            product_rows_saved = parse_editor_catalog_from_form("product", campaign.id, include_price=True)
+            inkind_rows_saved = parse_editor_catalog_from_form("inkind", campaign.id, include_price=False)
+        except ValueError as error:
+            flash(str(error), "error")
+            return render_editor(400)
+
+        # Keep the catalogue strings as the database representation for this prototype.
+        product_catalog_value = "\n".join(
+            f"{row['name']}|{row['required_qty']}|{row['unit_price']}|{row['image_url']}"
+            for row in product_rows_saved
+        )
+        inkind_catalog_value = "\n".join(
+            f"{row['name']}|{row['required_qty']}|{row['image_url']}"
+            for row in inkind_rows_saved
+        )
+        required_items_value = "\n".join(
+            f"{row['name']}: {row['required_qty']}"
+            for row in inkind_rows_saved
+        )
+
+        campaign.title = title
+        campaign.emergency_type = emergency_type
+        campaign.location = location
+        campaign.description = description
+        campaign.story_who_helping = story_who_helping
+        campaign.story_urgency = story_urgency
+        campaign.story_mission = story_mission
+        campaign.story_impact = story_impact
+        campaign.carousel_image_1 = images[0]
+        campaign.carousel_image_2 = images[1]
+        campaign.carousel_image_3 = images[2]
+        campaign.products_intro = products_intro
+        campaign.in_kind_intro = in_kind_intro
+        campaign.card_overview = card_overview
+        campaign.listing_image_url = listing_image_url
+        campaign.packaging_steps = "\n".join(steps)
+        campaign.product_catalog = product_catalog_value
+        campaign.inkind_catalog = inkind_catalog_value
+        campaign.required_items = required_items_value
+        campaign.last_verified_at = datetime.utcnow()
+
+        db.session.commit()
+        flash("Campaign details, images, Donate Products and In-kind catalogues have been saved.", "success")
+        return redirect(url_for("edit_campaign", campaign_id=campaign.id))
+
+    return render_editor()
 
 # ==========================================
 # NGO: CLOSE AN ACTIVE CAMPAIGN
@@ -2388,6 +3319,46 @@ with app.app_context():
                 )
             )
 
+
+    # Add campaign editor columns to an existing database.
+    # This preserves existing campaign records.
+
+    campaign_editor_columns = [
+        "story_who_helping",
+        "story_urgency",
+        "story_mission",
+        "story_impact",
+        "carousel_image_1",
+        "carousel_image_2",
+        "carousel_image_3",
+        "products_intro",
+        "in_kind_intro",
+        "packaging_steps",
+        "product_catalog",
+        "inkind_catalog",
+        "card_overview",
+        "listing_image_url",
+    ]
+
+    existing_campaign_columns = {
+        column["name"]
+        for column in inspect(db.engine).get_columns("campaigns")
+    }
+
+    for column_name in campaign_editor_columns:
+
+        if column_name not in existing_campaign_columns:
+
+            with db.engine.begin() as connection:
+                connection.execute(
+                    text(
+                        f'ALTER TABLE "campaigns" '
+                        f'ADD COLUMN "{column_name}" TEXT'
+                    )
+                )
+
+            existing_campaign_columns.add(column_name)
+
     # Local demonstration administrator.
     # Change these credentials before public deployment.
 
@@ -2457,6 +3428,19 @@ with app.app_context():
         "review_notes": "TEXT",
         "reviewed_at": "TIMESTAMP NULL",
     })       
+
+
+    # Replace only the exact earlier prototype default catalogue with the new
+    # seven-item Donate Products defaults. Do not modify required_items (physical in-kind).
+    migrated_catalogues = 0
+    for existing_campaign in Campaign.query.all():
+        saved_catalogue = (existing_campaign.product_catalog or "").strip()
+        if not saved_catalogue or saved_catalogue == LEGACY_DEFAULT_PRODUCT_CATALOG.strip():
+            if saved_catalogue != DEFAULT_PRODUCT_CATALOG.strip():
+                existing_campaign.product_catalog = DEFAULT_PRODUCT_CATALOG
+                migrated_catalogues += 1
+    if migrated_catalogues:
+        db.session.commit()
 
 
 # ==========================================

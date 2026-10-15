@@ -1,136 +1,86 @@
 {% extends "base.html" %}
-
-{% block title %}Relief Campaigns | Umeed{% endblock %}
-
+{% block title %}Explore campaigns | Umeed{% endblock %}
 {% block content %}
+<style>
+.campaign-explore-page{max-width:1200px;margin:0 auto;padding:1rem 0 2rem}
+.campaign-explore-heading{margin-bottom:1.5rem}
+.campaign-explore-heading h1{font-size:clamp(1.6rem,3vw,2.15rem);font-weight:800;color:#1d3557;margin:0 0 .45rem}
+.campaign-explore-heading p{color:#526178;margin:0;line-height:1.6}
+.campaign-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),340px));gap:1.25rem;align-items:stretch;justify-content:start}
+.campaign-card{display:flex;flex-direction:column;min-width:0;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;background:#fffdf9;border:1px solid #e0d1bf;border-radius:16px;box-shadow:0 4px 14px #1d35570b;padding:1rem}
+.campaign-card-image-wrap{display:block;width:100%;aspect-ratio:16/9;overflow:hidden;background:#fff;border-radius:11px;margin:.85rem 0 .9rem}
+.campaign-listing-image{display:block;width:100%;height:100%;max-width:100%;object-fit:cover;object-position:center;box-sizing:border-box}
+.campaign-category-badge{display:inline-flex;align-self:flex-start;background:#dce9dd;color:#285e49;border-radius:999px;padding:.45rem .75rem;font-size:.78rem;font-weight:800;line-height:1.2;max-width:100%}
+.campaign-card-body{display:flex;flex-direction:column;align-items:stretch;min-width:0;flex:1}
+.campaign-card h2{font-size:1.25rem;font-weight:800;line-height:1.3;color:#172b4d;margin:0 0 .65rem;overflow-wrap:anywhere}
+.campaign-card-location{font-size:.9rem;color:#526178;margin:0 0 .55rem;line-height:1.45}
+.campaign-card-overview{font-size:.92rem;line-height:1.58;color:#526178;margin:0 0 .75rem;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow:hidden;min-height:5.8em}
+.campaign-card-ngo{font-size:.87rem;color:#526178;margin:0 0 .85rem;line-height:1.4}
+.campaign-card .btn{align-self:flex-start;margin-top:auto}
+.campaign-empty{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:1.25rem;color:#526178}
+@media(max-width:500px){
+  .campaign-explore-page{padding:.5rem 0 1.25rem}
+  .campaign-card-grid{grid-template-columns:minmax(0,1fr)}
+  .campaign-card{padding:.85rem}
+}
+</style>
 
-<!-- ==========================================
-     PAGE HEADING
-     ========================================== -->
+<div class="campaign-explore-page">
+  <header class="campaign-explore-heading">
+    <div class="campaign-category-badge" style="margin-bottom:.75rem">Umeed relief network</div>
+    <h1>Verified Relief Campaigns</h1>
+    <p>Explore campaigns published by administrator-approved relief organisations.</p>
 
-<section class="campaigns-heading mb-4">
+    {% if selected_ngo %}
+      <p class="mt-2"><strong>Organisation:</strong> {{ selected_ngo.name }}</p>
+    {% endif %}
+  </header>
 
-    <span class="badge rounded-pill mb-3">
-        Verified relief initiatives
-    </span>
+  {% if campaigns %}
+    <div class="campaign-card-grid">
+      {% for campaign in campaigns %}
+        {% set overview = campaign.card_overview or campaign.story_who_helping or campaign.description or "This campaign lists supplies identified by the receiving organisation for its relief response." %}
 
-    <h1 class="h2 fw-bold">
-        Verified Relief Campaigns
-    </h1>
+        <article class="campaign-card">
+          <span class="campaign-category-badge">{{ campaign.emergency_type }}</span>
 
-    <p class="text-secondary">
-        Explore campaigns published by administrator-approved
-        relief organisations.
-    </p>
+          <div class="campaign-card-image-wrap">
+            <img
+              class="campaign-listing-image"
+              src="{{ campaign.listing_image_url or 'https://npr.brightspotcdn.com/dims3/default/strip/false/crop/3375x2250+0+0/resize/1200/quality/85/format/webp/?url=http%3A%2F%2Fnpr-brightspot.s3.amazonaws.com%2F7c%2F05%2F469543ab4164bcddf1fe1a1cebed%2Fap24272408399611.jpg' }}"
+              alt="{{ campaign.title }}"
+              loading="lazy"
+            >
+          </div>
 
-</section>
+          <div class="campaign-card-body">
+            <h2>{{ campaign.title }}</h2>
 
+            <p class="campaign-card-location">
+              <strong>Location:</strong> {{ campaign.location }}
+            </p>
 
-<!-- ==========================================
-     CAMPAIGN CARDS
-     ========================================== -->
+            <p class="campaign-card-overview">{{ overview|truncate(300, True, '…', 0) }}</p>
 
-<section class="campaigns-section">
+            <p class="campaign-card-ngo">
+              <strong>Organised by:</strong> {{ campaign.ngo.name }}
+            </p>
 
-    <div class="row g-4">
-
-        {% for campaign in campaigns %}
-
-            <div class="col-md-6 col-xxl-4">
-
-                <article class="feature-card campaign-card">
-
-                    <!-- Campaign category -->
-
-                    <span class="campaign-category">
-                        {{ campaign.emergency_type }}
-                    </span>
-
-
-                    <!-- Campaign title -->
-
-                    <h2 class="campaign-title">
-
-                        {{ campaign.title }}
-
-                    </h2>
-
-
-                    <!-- Campaign location -->
-
-                    <p class="campaign-location">
-
-                        <strong>Location:</strong>
-                        {{ campaign.location }}
-
-                    </p>
-
-
-                    <!-- Short campaign description -->
-
-                    <p class="campaign-description">
-
-                        {{ campaign.description }}
-
-                    </p>
-
-
-                    <!-- Receiving NGO -->
-
-                    <p class="campaign-organisation">
-
-                        <strong>Organised by:</strong>
-
-                        {{ campaign.ngo.name }}
-
-                    </p>
-
-
-                    <!-- Campaign actions -->
-
-                    <div class="campaign-card-actions">
-
-                        <a
-                            href="{{ url_for(
-                                'campaign_detail',
-                                campaign_id=campaign.id
-                            ) }}"
-                            class="btn btn-primary"
-                        >
-                            View more →
-                        </a>
-
-                    </div>
-
-                </article>
-
-            </div>
-
-        {% else %}
-
-            <!-- Empty state -->
-
-            <div class="col-12">
-
-                <div class="feature-card campaign-empty-state">
-
-                    <h2 class="h4">
-                        No active campaigns yet
-                    </h2>
-
-                    <p class="text-secondary mb-0">
-                        Approved relief campaigns will appear here
-                        when organisations publish their requests.
-                    </p>
-
-                </div>
-
-            </div>
-
-        {% endfor %}
-
+            <a
+              href="{{ url_for('campaign_detail', campaign_id=campaign.id) }}"
+              class="btn btn-primary"
+            >
+              View more →
+            </a>
+          </div>
+        </article>
+      {% endfor %}
     </div>
-
-</section>
-
+  {% else %}
+    <div class="campaign-empty">
+      <h2 class="h5 fw-bold">No active campaigns yet</h2>
+      <p class="mb-0">Approved relief campaigns will appear here when they are published.</p>
+    </div>
+  {% endif %}
+</div>
 {% endblock %}

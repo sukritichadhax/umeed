@@ -1,227 +1,442 @@
 {% extends "base.html" %}
-
 {% block title %}{{ campaign.title }} | Umeed{% endblock %}
-
 {% block content %}
+<style>
+.campaign-layout{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:1.25rem;align-items:start;width:100%}
+.campaign-panel,.campaign-donate-panel{background:#fff;border:1px solid #e8eaf0;border-radius:18px;padding:1.25rem;box-shadow:0 4px 18px #14233c0f}
+.campaign-panel{min-width:0}
+.campaign-story-panel{align-self:start}
+.campaign-kicker{font-size:.78rem;font-weight:800;letter-spacing:.08em;color:#53647c;text-transform:uppercase}
+.campaign-carousel{position:relative;overflow:hidden;border-radius:14px;background:#eef2f7;aspect-ratio:16/9;margin:0 0 1rem}
+.campaign-slide{display:block;width:100%;height:100%;object-fit:cover;position:absolute;inset:0;opacity:0;transition:opacity .7s ease}
+.campaign-slide.active{opacity:1}
+.carousel-dots{display:flex;justify-content:center;gap:.5rem;margin:.2rem 0 1rem}
+.carousel-dot{width:9px;height:9px;border:0;border-radius:50%;background:#cbd5e1;padding:0}
+.carousel-dot.active{background:#1d3557}
+.story-block{padding:1rem 0;border-bottom:1px solid #edf0f4}
+.story-block h3{display:flex;align-items:center;gap:.6rem;font-size:1.2rem;font-weight:800;line-height:1.3;margin:0 0 .45rem;color:#172b4d}
+.story-block p{font-size:.98rem;line-height:1.7;color:#65738a;margin:0}
+.ngo-summary{background:#f6f8fb;border-radius:12px;padding:1rem;margin-top:1rem}
+.campaign-donate-sticky{position:sticky;top:1rem;align-self:start;min-width:0;max-height:calc(100vh - 2rem);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.campaign-donate-panel{padding:1rem}
+.campaign-donate-tabs{display:grid;grid-template-columns:1fr 1fr;gap:.35rem;background:#fff1ed;border-radius:12px;padding:.35rem;margin-bottom:1rem}
+.campaign-donate-tab{border:0;border-radius:9px;background:transparent;color:#e74d2b;padding:.75rem .5rem;font-weight:800;font-size:.98rem}
+.campaign-donate-tab.active{background:#f4512b;color:#fff}
+.campaign-tab-pane[hidden]{display:none!important}
+.campaign-products-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
+.campaign-product-card{border:1px solid #dce2eb;border-radius:12px;overflow:hidden;min-width:0;display:flex;flex-direction:column;background:#fff}
+.campaign-product-card img{display:block;width:100%;height:150px;object-fit:contain;object-position:center;background:#ffffff;padding:.65rem;box-sizing:border-box}
+.campaign-product-name{font-size:.95rem;font-weight:800;line-height:1.35;margin:0 0 .45rem;color:#172b4d;min-height:2.57em;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+.inkind-progress-track{height:8px;border-radius:99px;background:#e9edf2;overflow:hidden;margin:.35rem 0 .45rem}
+.inkind-progress-fill{height:100%;background:#2d9b72;border-radius:99px;transition:width .35s ease}
+.inkind-progress-caption{display:flex;justify-content:space-between;gap:.5rem;font-size:.78rem;color:#526178;margin-top:.45rem}
+.campaign-product-body{padding:.75rem;display:flex;flex-direction:column;flex:1}
+.campaign-product-meta{font-size:.8rem;color:#617089;margin:.12rem 0}
+.campaign-product-price{font-size:1.1rem;font-weight:800;margin-top:.45rem;color:#172b4d}
+.campaign-product-price small{font-size:.78rem;font-weight:500;color:#64748b}
+.product-progress-label{display:flex;justify-content:space-between;gap:.5rem;font-size:.78rem;color:#526178;margin-top:.45rem}
+.product-progress-track{height:8px;border-radius:99px;background:#e9edf2;overflow:hidden;margin:.35rem 0 .45rem}
+.product-progress-fill{height:100%;width:0;background:#2d9b72;border-radius:99px;transition:width .35s ease}
+.campaign-qty-control{display:flex;align-items:center;justify-content:space-between;border:1px solid #d8dee8;border-radius:9px;overflow:hidden;margin-top:.65rem}
+.campaign-qty-control button{border:0;background:#f2f5f9;width:34px;height:36px;font-size:1.2rem;font-weight:800}
+.campaign-qty-control input{width:42px;text-align:center;border:0;font-weight:800;min-width:0;appearance:textfield;padding:.2rem}
+.campaign-qty-control input::-webkit-inner-spin-button,.campaign-qty-control input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.campaign-pack-grid{display:grid;grid-template-columns:1fr;gap:.65rem;margin-top:.8rem}
+.campaign-pack-step{background:#f6f8fb;border:1px solid #e8edf4;border-radius:12px;padding:.85rem}
+.campaign-pack-step h3{font-size:.95rem;font-weight:800;margin-bottom:.35rem}
+.campaign-pack-step p{margin:0;color:#526178;font-size:.9rem;line-height:1.5}
+.campaign-supply-table{font-size:.85rem}
+@media(max-width:900px){.campaign-layout{grid-template-columns:minmax(0,1fr) minmax(320px,.9fr);gap:.85rem}.campaign-panel{padding:1rem}.campaign-donate-panel{padding:.8rem}.campaign-products-grid{grid-template-columns:1fr}}
+@media(max-width:720px){.campaign-layout{grid-template-columns:1fr}.campaign-donate-sticky{position:static;max-height:none;overflow:visible}.campaign-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:450px){.campaign-products-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.campaign-slide,.product-progress-fill,.inkind-progress-fill{transition:none}}
+</style>
 
-<div class="row justify-content-center">
+<header class="mb-4">
+  <h1 class="h2 mb-2">{{ campaign.title }}</h1>
+  <div class="campaign-kicker">Category: {{ campaign.emergency_type }}</div>
+  <div class="text-secondary mt-2">Location: {{ campaign.location }}</div>
+</header>
 
-    <div class="col-lg-9">
-
-        <article class="feature-card">
-
-            <!-- Campaign status -->
-
-            <span class="badge text-bg-success mb-3">
-                Verified campaign
-            </span>
-
-            <p class="text-secondary mb-2">
-                {{ campaign.emergency_type }}
-            </p>
-
-            <h1 class="h2 mb-3">
-                {{ campaign.title }}
-            </h1>
-
-            <p class="text-secondary">
-                <strong>Location:</strong>
-                {{ campaign.location }}
-            </p>
-
-            <hr>
-
-            <!-- Campaign description -->
-
-            <h2 class="h5 mt-4">
-                About this campaign
-            </h2>
-
-            <p>
-                {{ campaign.description }}
-            </p>
-
-
-            <!-- Required supplies -->
-
-            <h2 class="h5 mt-4">Current supply requirements</h2>
-            {% if inventory %}
-            <div class="table-responsive">
-                <table class="table align-middle">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Required</th>
-                            <th>Accepted</th>
-                            <th>Committed / awaiting verification</th>
-                            <th>Still available</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for need in inventory %}
-                        <tr>
-                            <td>{{ need.name }}</td>
-                            <td>{{ need.required }}</td>
-                            <td>{{ need.accepted }}</td>
-                            <td>{{ need.committed }}</td>
-                            <td>
-                                {% if need.remaining > 0 %}
-                                    <span class="badge text-bg-warning">{{ need.remaining }} needed</span>
-                                {% else %}
-                                    <span class="badge text-bg-success">Target reached</span>
-                                {% endif %}
-                                {% if need.surplus > 0 %}
-                                    <div class="small text-danger">Surplus flagged: {{ need.surplus }}</div>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="alert alert-warning">
-                The requirement list is not in the required format. The NGO should update it to use one line per item, such as “Blankets: 100”.
-            </div>
-            {% endif %}
-
-
-            <!-- Receiving organisation -->
-
-            <h2 class="h5 mt-4">
-                Receiving organisation
-            </h2>
-
-            <p class="mb-1">
-                <strong>{{ campaign.ngo.name }}</strong>
-            </p>
-
-            <p class="text-secondary">
-                {{ campaign.ngo.location }}
-            </p>
-
-
-            <!-- Verification timestamp -->
-
-            <p class="small text-secondary mt-4">
-                Requirements last recorded as verified:
-
-                {{ campaign.last_verified_at | ist_datetime("%d %b %Y, %I:%M %p") }}
-            </p>
-
-
-            <hr class="my-4">
-
-
-            <!-- Donation action for donors -->
-
-            {% if current_user.is_authenticated
-                  and current_user.role == "donor" %}
-
-                <h2 class="h5">
-                    Contribute supplies
-                </h2>
-
-                <p class="text-secondary">
-                    Register the items you intend to donate.
-                    The receiving NGO will record the quantities
-                    actually received and accepted.
-                </p>
-
-                <a
-                    href="{{ url_for(
-                        'donate_to_campaign',
-                        campaign_id=campaign.id
-                    ) }}"
-                    class="btn btn-primary mt-2"
-                >
-                    Donate supplies
-                </a>
-            
-            {% if has_open_needs %}
-                <div class="alert alert-success">Current listed requirements are already fulfilled or committed. Please check back for updates.</div>    
-            {% else %}
-            {% endif %}
-            
-            <!-- Action for visitors who are not signed in -->
-
-            {% elif not current_user.is_authenticated %}
-
-                <h2 class="h5">
-                    Want to contribute?
-                </h2>
-
-                <p class="text-secondary">
-                    Sign in or create a donor account to register
-                    a donation for this campaign.
-                </p>
-
-                <a
-                    href="{{ url_for('login') }}"
-                    class="btn btn-primary mt-2"
-                >
-                    Sign in to donate
-                </a>
-
-                <a
-                    href="{{ url_for('register') }}"
-                    class="btn btn-outline-secondary mt-2 ms-2"
-                >
-                    Create account
-                </a>
-
-
-            <!-- Message for other authenticated roles -->
-
-            {% elif current_user.role == "ngo_staff" %}
-
-                <p class="text-secondary mt-3">
-                    You are signed in as an NGO representative.
-                    Use your NGO Workspace to manage donations
-                    and campaigns.
-                </p>
-
-                <a
-                    href="{{ url_for('dashboard') }}"
-                    class="btn btn-outline-primary"
-                >
-                    Open NGO Workspace
-                </a>
-
-
-            {% elif current_user.role == "admin" %}
-
-                <p class="text-secondary mt-3">
-                    You are signed in as a platform administrator.
-                </p>
-
-                <a
-                    href="{{ url_for('dashboard') }}"
-                    class="btn btn-outline-primary"
-                >
-                    Open Admin Panel
-                </a>
-
-            {% endif %}
-
-
-            <!-- Return to campaign list -->
-
-            <div class="mt-4">
-
-                <a
-                    href="{{ url_for('campaigns') }}"
-                    class="btn btn-outline-secondary"
-                >
-                    Back to campaigns
-                </a>
-
-            </div>
-
-        </article>
-
+<div class="campaign-layout">
+  <section class="campaign-panel campaign-story-panel">
+    <div class="campaign-carousel" aria-label="Campaign images">
+      <img class="campaign-slide active" src="{{ campaign.carousel_image_1 or 'https://images.unsplash.com/photo-1547683905-f686c993aae5?auto=format&fit=crop&w=1200&q=80' }}" alt="Campaign image 1">
+      <img class="campaign-slide" src="{{ campaign.carousel_image_2 or 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=1200&q=80' }}" alt="Campaign image 2">
+      <img class="campaign-slide" src="{{ campaign.carousel_image_3 or 'https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=1200&q=80' }}" alt="Campaign image 3">
     </div>
 
+    <div class="carousel-dots" aria-label="Choose campaign image">
+      <button type="button" class="carousel-dot active" aria-label="Image 1" aria-pressed="true"></button>
+      <button type="button" class="carousel-dot" aria-label="Image 2" aria-pressed="false"></button>
+      <button type="button" class="carousel-dot" aria-label="Image 3" aria-pressed="false"></button>
+    </div>
+
+    <div class="story-block">
+      <h3><span aria-hidden="true">🤝</span> Who you're helping</h3>
+      <p>{{ campaign.story_who_helping or campaign.description }}</p>
+    </div>
+
+    <div class="story-block">
+      <h3><span aria-hidden="true">⏱️</span> Why support is urgent</h3>
+      <p>{{ campaign.story_urgency or "The receiving organisation will update this section with the current urgency and community needs." }}</p>
+    </div>
+
+    <div class="story-block">
+      <h3><span aria-hidden="true">🏢</span> Who's behind the mission</h3>
+      <p>{{ campaign.story_mission or (campaign.ngo.name ~ " is coordinating this campaign.") }}</p>
+    </div>
+
+    <div class="story-block">
+      <h3><span aria-hidden="true">📦</span> What your donation makes possible</h3>
+      <p>{{ campaign.story_impact or "Each accepted item helps the receiving organisation address its listed supply requirements." }}</p>
+    </div>
+
+    <div class="ngo-summary">
+      <div class="small text-uppercase text-secondary fw-bold mb-1">Receiving organisation</div>
+      <h3 class="h5 mb-1">{{ campaign.ngo.name }}</h3>
+      <span class="badge text-bg-success">✓ NGO approved by Umeed admin</span>
+      <p class="text-secondary mt-2 mb-1">📍 {{ campaign.ngo.location }}</p>
+      <p class="mb-0">{{ campaign.ngo.description or "The receiving organisation checks incoming supplies and keeps campaign records updated." }}</p>
+    </div>
+
+    <p class="small text-secondary mt-3 mb-0">
+      Requirements last recorded:
+      {{ campaign.last_verified_at|ist_datetime if campaign.last_verified_at else "Not recorded" }} IST
+    </p>
+  </section>
+
+  <aside class="campaign-donate-sticky">
+    <section class="campaign-donate-panel" id="campaign-donations">
+      <div class="campaign-donate-tabs" role="tablist" aria-label="Donation options">
+        <button type="button" class="campaign-donate-tab active" id="tab-products" role="tab" aria-selected="true" aria-controls="pane-products" data-pane="pane-products">Donate Products</button>
+        <button type="button" class="campaign-donate-tab" id="tab-inkind" role="tab" aria-selected="false" aria-controls="pane-inkind" data-pane="pane-inkind">In-kind donation</button>
+      </div>
+
+      <div class="campaign-tab-pane" id="pane-products" role="tabpanel" aria-labelledby="tab-products">
+        <h2 class="h5 fw-bold mb-1">Supplies needed for this campaign</h2>
+        <p class="text-secondary small mb-3">{{ campaign.products_intro or "Select the quantities you would like Umeed to procure from vendors for this campaign." }}</p>
+
+        {% if products %}
+          {% if current_user.is_authenticated and current_user.role == "donor" %}
+            <form method="post" action="{{ url_for('donate_to_campaign', campaign_id=campaign.id) }}" id="campaignProductForm">
+              <input type="hidden" name="phase" value="review">
+
+              <div class="campaign-products-grid">
+                {% for product in products %}
+                  {% set percent = ((product.accepted / product.required * 100)|round(0)|int) if product.required > 0 else 0 %}
+                  <article class="campaign-product-card">
+                    <img src="{{ product.image }}" alt="{{ product.name }}" loading="lazy">
+
+                    <div class="campaign-product-body">
+                      <h3 class="campaign-product-name">{{ product.name }}</h3>
+                      <div class="product-progress-label">
+                        <span>{{ product.accepted }} / {{ product.required }} accepted</span>
+                        <strong>{{ percent }}%</strong>
+                      </div>
+                      <div class="product-progress-track" role="progressbar" aria-label="{{ product.name }} fulfilled" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100">
+                        <div class="product-progress-fill" data-percent="{{ percent }}"></div>
+                      </div>
+                      <div class="campaign-product-meta">{{ product.available }} still available</div>
+                      <div class="campaign-product-price">₹{{ "{:,.0f}".format(product.unit_price) }} <small>/ {{ product.unit_label }}</small></div>
+
+                      {% if product.available > 0 %}
+                        <div class="campaign-qty-control">
+                          <button type="button" class="campaign-qty-minus" aria-label="Decrease {{ product.name }}">−</button>
+                          <input type="number" name="qty_{{ product.index }}" value="0" min="0" max="{{ [product.available, 10000]|min }}" step="1" inputmode="numeric" data-price="{{ product.unit_price }}" aria-label="Quantity of {{ product.name }}">
+                          <button type="button" class="campaign-qty-plus" aria-label="Increase {{ product.name }}">+</button>
+                        </div>
+                      {% else %}
+                        <p class="small text-success fw-bold mt-2 mb-0">Target fulfilled or committed</p>
+                      {% endif %}
+                    </div>
+                  </article>
+                {% endfor %}
+              </div>
+
+              <div class="border-top mt-3 pt-3">
+                <div class="small text-secondary">Contribution total</div>
+                <div class="h4 fw-bold mb-3" id="campaign-basket-total">₹0</div>
+                <button type="submit" class="btn btn-primary w-100">Continue to checkout</button>
+              </div>
+            </form>
+          {% else %}
+            <div class="campaign-products-grid">
+              {% for product in products %}
+                {% set percent = ((product.accepted / product.required * 100)|round(0)|int) if product.required > 0 else 0 %}
+                <article class="campaign-product-card">
+                  <img src="{{ product.image }}" alt="{{ product.name }}" loading="lazy">
+                  <div class="campaign-product-body">
+                    <h3 class="campaign-product-name">{{ product.name }}</h3>
+                    <div class="product-progress-label">
+                      <span>{{ product.accepted }} / {{ product.required }} accepted</span>
+                      <strong>{{ percent }}%</strong>
+                    </div>
+                    <div class="product-progress-track" role="progressbar" aria-label="{{ product.name }} fulfilled" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100">
+                      <div class="product-progress-fill" data-percent="{{ percent }}"></div>
+                    </div>
+                    <div class="campaign-product-meta">{{ product.available }} still available</div>
+                    <div class="campaign-product-price">₹{{ "{:,.0f}".format(product.unit_price) }} <small>/ {{ product.unit_label }}</small></div>
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+            <a href="{{ url_for('login') }}" class="btn btn-primary w-100 mt-3">Sign in to select products</a>
+          {% endif %}
+        {% else %}
+          <div class="alert alert-warning mb-0">No products have been configured for this campaign yet.</div>
+        {% endif %}
+      </div>
+
+      <div class="campaign-tab-pane" id="pane-inkind" role="tabpanel" aria-labelledby="tab-inkind" hidden>
+        <h2 class="h5 fw-bold">In-kind donation</h2>
+        <p class="text-secondary small">{{ campaign.in_kind_intro or "Choose physical supplies you will provide yourself. These are separate from products procured by Umeed." }}</p>
+
+        <h3 class="h6 fw-bold mt-3">Current campaign requirements</h3>
+
+        {% if inkind_products %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle campaign-supply-table">
+              <thead>
+                <tr>
+                  <th>Supply</th>
+                  <th>Required</th>
+                  <th>Accepted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for product in inkind_products %}
+                  <tr>
+                    <td>{{ product.name }}</td>
+                    <td>{{ product.required }}</td>
+                    <td>{{ product.accepted }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {% if current_user.is_authenticated and current_user.role == "donor" %}
+            <h3 class="h6 fw-bold mt-3">Choose physical supplies to donate</h3>
+            <form method="post" action="{{ url_for('donate_in_kind_to_campaign', campaign_id=campaign.id) }}" id="inkindProductForm">
+              <div class="campaign-products-grid">
+                {% for product in inkind_products %}
+                  {% set inkind_percent = ((product.accepted / product.required * 100)|round(0)|int) if product.required > 0 else 0 %}
+                  <article class="campaign-product-card">
+                    <img src="{{ product.image }}" alt="{{ product.name }}" loading="lazy">
+
+                    <div class="campaign-product-body">
+                      <h4 class="campaign-product-name">{{ product.name }}</h4>
+                      <div class="inkind-progress-caption">
+                        <span>{{ product.accepted }} / {{ product.required }} accepted</span>
+                        <strong>{{ inkind_percent }}%</strong>
+                      </div>
+                      <div class="inkind-progress-track" role="progressbar" aria-label="{{ product.name }} progress" aria-valuenow="{{ inkind_percent }}" aria-valuemin="0" aria-valuemax="100">
+                        <div class="inkind-progress-fill" data-percent="{{ inkind_percent }}"></div>
+                      </div>
+
+                      {% if product.available > 0 %}
+                        <div class="campaign-qty-control">
+                          <button type="button" class="inkind-qty-minus" aria-label="Decrease {{ product.name }}">−</button>
+                          <input
+                            id="inkind-qty-{{ product.index }}"
+                            type="number"
+                            name="inkind_qty_{{ product.index }}"
+                            value="0"
+                            min="0"
+                            max="{{ [product.available, 10000]|min }}"
+                            step="1"
+                            inputmode="numeric"
+                            aria-label="In-kind quantity of {{ product.name }}"
+                          >
+                          <button type="button" class="inkind-qty-plus" aria-label="Increase {{ product.name }}">+</button>
+                        </div>
+                      {% else %}
+                        <p class="small text-success fw-bold mt-2 mb-0">Target fulfilled or committed</p>
+                      {% endif %}
+                    </div>
+                  </article>
+                {% endfor %}
+              </div>
+
+              <div class="mt-3">
+                <label for="inkind-delivery" class="form-label fw-semibold">How will you provide the supplies?</label>
+                <select id="inkind-delivery" name="delivery_method" class="form-select" required>
+                  <option value="drop_off">I will deliver the supplies myself</option>
+                  <option value="collection_request">Request a pickup (the NGO will confirm separately)</option>
+                </select>
+              </div>
+
+              <button type="submit" class="btn btn-primary w-100 mt-2">Donate now</button>
+            </form>
+          {% elif not current_user.is_authenticated %}
+            <a href="{{ url_for('login') }}" class="btn btn-primary w-100 mt-2">Sign in to donate physical supplies</a>
+          {% else %}
+            <p class="small text-secondary">Physical in-kind submissions are available to donor accounts.</p>
+          {% endif %}
+        {% else %}
+          <p class="text-secondary">The NGO has not configured supply targets yet.</p>
+        {% endif %}
+
+        <h3 class="h6 fw-bold mt-3">Pack in 4 easy steps</h3>
+        <div class="campaign-pack-grid">
+          {% for step in packaging_steps %}
+            <article class="campaign-pack-step">
+              <h3>{{ loop.index }}. Packing step</h3>
+              <p>{{ step }}</p>
+            </article>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  </aside>
 </div>
 
+<script>
+(() => {
+  const tabs = [...document.querySelectorAll('.campaign-donate-tab')];
+  const panes = [...document.querySelectorAll('.campaign-tab-pane')];
+
+  tabs.forEach(tab => tab.addEventListener('click', () => {
+    tabs.forEach(btn => {
+      const selected = btn === tab;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
+
+    panes.forEach(pane => {
+      pane.hidden = pane.id !== tab.dataset.pane;
+    });
+  }));
+
+  document.querySelectorAll('.product-progress-fill').forEach(bar => {
+    const percent = Number(bar.dataset.percent || 0);
+    bar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+  });
+
+  document.querySelectorAll('.inkind-progress-fill').forEach(bar => {
+    const percent = Number(bar.dataset.percent || 0);
+    bar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+  });
+
+  const money = value => '₹' + Number(value).toLocaleString('en-IN', {maximumFractionDigits: 0});
+  const form = document.getElementById('campaignProductForm');
+
+  if (form) {
+    const inputs = [...form.querySelectorAll('input[type="number"][data-price]')];
+    const totalNode = document.getElementById('campaign-basket-total');
+
+    function updateTotal() {
+      let total = 0;
+
+      inputs.forEach(input => {
+        const max = Number.parseInt(input.max || '10000', 10);
+        let qty = Number.parseInt(input.value || '0', 10);
+
+        if (!Number.isFinite(qty) || qty < 0) qty = 0;
+        qty = Math.min(qty, max);
+        input.value = qty;
+        total += qty * Number(input.dataset.price || 0);
+      });
+
+      if (totalNode) totalNode.textContent = money(total);
+    }
+
+    form.querySelectorAll('.campaign-qty-minus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = btn.closest('.campaign-qty-control').querySelector('input');
+        input.value = Math.max(0, Number(input.value || 0) - 1);
+        updateTotal();
+      });
+    });
+
+    form.querySelectorAll('.campaign-qty-plus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = btn.closest('.campaign-qty-control').querySelector('input');
+        input.value = Math.min(Number(input.max || 10000), Number(input.value || 0) + 1);
+        updateTotal();
+      });
+    });
+
+    inputs.forEach(input => input.addEventListener('input', updateTotal));
+
+    form.addEventListener('submit', event => {
+      if (!inputs.some(input => Number(input.value || 0) > 0)) {
+        event.preventDefault();
+        alert('Choose at least one product quantity.');
+        return;
+      }
+
+      inputs.forEach(input => {
+        if (Number(input.value || 0) <= 0) input.disabled = true;
+      });
+    });
+
+    updateTotal();
+  }
+
+  const inkindForm = document.getElementById('inkindProductForm');
+
+  if (inkindForm) {
+    const inputs = [...inkindForm.querySelectorAll('input[type="number"]')];
+
+    inkindForm.querySelectorAll('.inkind-qty-minus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = btn.closest('.campaign-qty-control').querySelector('input');
+        input.value = Math.max(0, Number(input.value || 0) - 1);
+      });
+    });
+
+    inkindForm.querySelectorAll('.inkind-qty-plus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = btn.closest('.campaign-qty-control').querySelector('input');
+        input.value = Math.min(Number(input.max || 10000), Number(input.value || 0) + 1);
+      });
+    });
+
+    inkindForm.addEventListener('submit', event => {
+      if (!inputs.some(input => Number(input.value || 0) > 0)) {
+        event.preventDefault();
+        alert('Choose a quantity for at least one physical supply.');
+        return;
+      }
+
+      inputs.forEach(input => {
+        if (Number(input.value || 0) <= 0) input.disabled = true;
+      });
+    });
+  }
+
+  const slides = [...document.querySelectorAll('.campaign-slide')];
+  const dots = [...document.querySelectorAll('.carousel-dot')];
+
+  if (slides.length && slides.length === dots.length) {
+    let index = 0;
+    let timer;
+
+    function show(next) {
+      index = next;
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+      dots.forEach((dot, i) => {
+        dot.classList.toggle('active', i === index);
+        dot.setAttribute('aria-pressed', i === index ? 'true' : 'false');
+      });
+    }
+
+    function restart() {
+      clearInterval(timer);
+      timer = setInterval(() => show((index + 1) % slides.length), 3000);
+    }
+
+    dots.forEach((dot, i) => {
+      dot.addEventListener('click', () => {
+        show(i);
+        restart();
+      });
+    });
+
+    restart();
+  }
+})();
+</script>
 {% endblock %}

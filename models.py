@@ -98,6 +98,29 @@ class Campaign(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     ngo_id = db.Column(db.Integer, db.ForeignKey("ngos.id"), nullable=False)
+        # Editable campaign story sections
+    story_who_helping = db.Column(db.Text, nullable=True)
+    story_urgency = db.Column(db.Text, nullable=True)
+    story_mission = db.Column(db.Text, nullable=True)
+    story_impact = db.Column(db.Text, nullable=True)
+
+    # Editable carousel image URLs
+    carousel_image_1 = db.Column(db.Text, nullable=True)
+    carousel_image_2 = db.Column(db.Text, nullable=True)
+    carousel_image_3 = db.Column(db.Text, nullable=True)
+
+    # Editable donor-facing information
+    products_intro = db.Column(db.Text, nullable=True)
+    in_kind_intro = db.Column(db.Text, nullable=True)
+    packaging_steps = db.Column(db.Text, nullable=True)
+
+    # Editable product catalogue:
+    # Product name | Required quantity | Unit price | Image URL
+    product_catalog = db.Column(db.Text, nullable=True)
+    inkind_catalog = db.Column(db.Text, nullable=True)
+    # Short text and image shown on the Explore Campaigns cards
+    card_overview = db.Column(db.Text, nullable=True)
+    listing_image_url = db.Column(db.Text, nullable=True)
     ngo = db.relationship("NGO", back_populates="campaigns")
 
 
