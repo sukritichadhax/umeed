@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Edit campaign needs | Umeed{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-8">
+  <section class="feature-card p-4">
+    <h1 class="h3">Edit campaign supply requirements</h1>
+    <p class="text-secondary">{{ campaign.title }} · Enter one product per line using the exact pack size. Quantities are target units (packs, bags, bottles, sheets or torches).</p>
+    <form method="post">
+      <label class="form-label" for="required_items">Required items and target quantities</label>
+      <textarea id="required_items" name="required_items" class="form-control font-monospace" rows="12" required>{{ form_items if form_items is defined else (campaign.required_items or '') }}</textarea>
+      <p class="small text-secondary mt-2">Example: <code>Rice (5 kg bag): 100</code>. Adjust targets to Aastha's real needs before publishing; sample quantities are not verified needs.</p>
+      <button type="submit" class="btn btn-primary">Save requirements</button>
+      <a class="btn btn-outline-secondary ms-2" href="{{ url_for('campaign_detail', campaign_id=campaign.id) }}">Cancel</a>
+    </form>
+  </section>
+</div></div>
+{% endblock %}

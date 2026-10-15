@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Complete your contribution | Umeed{% endblock %}
+{% block content %}
+<style>
+.checkout-wrap{max-width:1120px;margin:0 auto}
+.checkout-shell{background:#fff;border:1px solid #e5e9f0;border-radius:22px;box-shadow:0 8px 28px #17294312;overflow:hidden}
+.checkout-head{padding:clamp(1.25rem,3vw,2.5rem);background:#fffaf4;border-bottom:1px solid #e8edf4}
+.checkout-kicker{display:inline-flex;align-items:center;gap:.45rem;color:#4b617b;font-size:.85rem;font-weight:750;letter-spacing:.04em;text-transform:uppercase}
+.checkout-title{font-size:clamp(1.8rem,3.5vw,2.7rem);font-weight:850;letter-spacing:-.035em;color:#1d3557;margin:.65rem 0 .45rem}
+.checkout-subtitle{color:#53647c;font-size:1.05rem;margin:0}
+.checkout-steps{display:flex;gap:.55rem;flex-wrap:wrap;margin-top:1.25rem}
+.checkout-step{border-radius:999px;background:#eaf0f7;color:#53647c;padding:.4rem .8rem;font-size:.86rem;font-weight:700}
+.checkout-step.active{background:#1d3557;color:#fff}
+.checkout-content{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.85fr);gap:1.5rem;padding:clamp(1rem,3vw,2rem)}
+.checkout-panel{border:1px solid #e5e9f0;border-radius:16px;padding:1.25rem;min-width:0}
+.checkout-panel h2{font-size:1.15rem;font-weight:800;color:#1d3557;margin-bottom:1rem}
+.order-line{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.9rem;padding:1rem 0;border-bottom:1px solid #edf0f4}
+.order-line:first-of-type{padding-top:.2rem}
+.order-name{font-weight:750;color:#24364e}
+.order-meta{font-size:.9rem;color:#64748b;margin-top:.2rem}
+.order-price{font-weight:800;text-align:right;white-space:nowrap}
+.order-total{display:flex;justify-content:space-between;gap:1rem;align-items:center;padding-top:1.1rem;font-weight:800;color:#1d3557}
+.order-total strong{font-size:1.7rem;white-space:nowrap}
+.payment-choice{display:flex;align-items:center;gap:.8rem;border:1px solid #dce3ed;border-radius:12px;padding:.9rem 1rem;margin:.65rem 0;cursor:pointer;transition:border-color .15s,background .15s}
+.payment-choice:has(input:checked){border-color:#1d3557;background:#f2f6fb;box-shadow:0 0 0 1px #1d3557 inset}
+.payment-choice input{width:18px;height:18px;accent-color:#1d3557;flex-shrink:0}
+.payment-choice-copy{flex:1;min-width:0}
+.payment-choice-copy strong{display:block;color:#24364e}
+.payment-choice-copy span{display:block;font-size:.85rem;color:#64748b;margin-top:.15rem}
+.payment-symbol{font-weight:900;color:#1d3557;font-size:1.15rem;min-width:2rem;text-align:center}
+.checkout-note{font-size:.82rem;line-height:1.55;color:#6b7789;margin-top:1rem}
+.checkout-submit{width:100%;border:0;border-radius:12px;padding:.9rem 1.1rem;background:#1d3557;color:#fff;font-weight:800;font-size:1rem;margin-top:1rem}
+.checkout-submit:hover{background:#142944}
+.checkout-back{display:inline-block;margin-top:1rem;color:#53647c;text-decoration:none;font-weight:700}
+.checkout-back:hover{text-decoration:underline}
+.checkout-ngo{font-size:.9rem;color:#53647c;margin-top:.35rem}
+@media(max-width:800px){.checkout-content{grid-template-columns:1fr}.checkout-panel{padding:1rem}.order-total strong{font-size:1.45rem}}
+</style>
+
+<div class="checkout-wrap">
+  <section class="checkout-shell">
+    <header class="checkout-head">
+      <div class="checkout-kicker"><span aria-hidden="true">●</span> Umeed contribution checkout</div>
+      <h1 class="checkout-title">Complete your contribution</h1>
+      <p class="checkout-subtitle">Review the products you have selected and the total contribution amount.</p>
+      <div class="checkout-ngo">{{ campaign.title }} · {{ campaign.ngo.name }}</div>
+      <div class="checkout-steps" aria-label="Checkout progress">
+        <span class="checkout-step">1. Select products</span>
+        <span class="checkout-step active">2. Review &amp; payment</span>
+        <span class="checkout-step">3. Confirmation</span>
+      </div>
+    </header>
+
+    <form method="post" action="{{ url_for('donate_to_campaign', campaign_id=campaign.id) }}">
+      <input type="hidden" name="phase" value="confirm">
+
+      <div class="checkout-content">
+        <section class="checkout-panel" aria-labelledby="order-summary-title">
+          <h2 id="order-summary-title">Your contribution</h2>
+
+          {% for item in items %}
+          <div class="order-line">
+            <div>
+              <div class="order-name">{{ item.name }}</div>
+              <div class="order-meta">Quantity: {{ item.quantity }} · ₹{{ "{:,.0f}".format(item.unit_price) }} / {{ item.unit_label }}</div>
+            </div>
+            <div class="order-price">₹{{ "{:,.0f}".format(item.line_total) }}</div>
+          </div>
+          {% endfor %}
+
+          <div class="order-total">
+            <span>Total contribution</span>
+            <strong>₹{{ "{:,.0f}".format(total) }}</strong>
+          </div>
+          <p class="checkout-note">Your selected quantities identify the supplies Umeed would procure for this campaign. Product quantities remain pending until fulfilment and receipt are verified by the NGO.</p>
+        </section>
+
+        <section class="checkout-panel" aria-labelledby="payment-method-title">
+          <h2 id="payment-method-title">Payment method</h2>
+          <label class="payment-choice">
+            <input type="radio" name="payment_method" value="upi" checked>
+            <span class="payment-symbol" aria-hidden="true">UPI</span>
+            <span class="payment-choice-copy"><strong>UPI</strong><span>Pay using a UPI app</span></span>
+          </label>
+          <label class="payment-choice">
+            <input type="radio" name="payment_method" value="card">
+            <span class="payment-symbol" aria-hidden="true">▤</span>
+            <span class="payment-choice-copy"><strong>Credit or debit card</strong><span>Card payment option</span></span>
+          </label>
+          <label class="payment-choice">
+            <input type="radio" name="payment_method" value="netbanking">
+            <span class="payment-symbol" aria-hidden="true">▥</span>
+            <span class="payment-choice-copy"><strong>Net banking</strong><span>Bank transfer option</span></span>
+          </label>
+
+          <p class="checkout-note">Payment processing is not connected in this build. Do not enter card, bank, or UPI credentials. Continuing records a contribution request for the prototype; it does not transfer funds.</p>
+
+          {% for item in items %}
+          <input type="hidden" name="qty_{{ item.index }}" value="{{ item.quantity }}">
+          {% endfor %}
+
+          <button type="submit" class="checkout-submit">Confirm contribution request · ₹{{ "{:,.0f}".format(total) }}</button>
+          <a class="checkout-back" href="{{ url_for('campaign_detail', campaign_id=campaign.id) }}#campaign-donations">← Back to products</a>
+        </section>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

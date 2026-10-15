@@ -1,538 +1,232 @@
 {% extends "base.html" %}
-
-{% block title %}Donation Record | Umeed{% endblock %}
-
+{% block title %}Donation Passport | Umeed{% endblock %}
 {% block content %}
+{% set is_vendor_procurement = donation.delivery_method == 'vendor_procurement' %}
+
+<style>
+.passport-container{max-width:1050px;margin:0 auto}
+.passport-card{background:#fffdf8;border:1px solid #e5e0d7;border-radius:16px;padding:1.25rem;box-shadow:0 4px 16px #14233c0a}
+.passport-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+.passport-header h1{color:#1d3557}
+.qr-preview{flex:0 0 150px}
+.qr-preview img{max-width:100%;height:auto;border:1px solid #e3d6c8;border-radius:10px;padding:.4rem;background:white}
+.passport-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;border-top:1px solid #e7ded2;padding-top:1rem}
+.detail-label{display:block;color:#66758b;font-size:.82rem;margin-bottom:.25rem}
+.donation-code{font-weight:800;letter-spacing:.03em}
+.timeline-list{display:flex;flex-direction:column;gap:1rem}
+.timeline-entry{display:grid;grid-template-columns:14px minmax(0,1fr);gap:.7rem;align-items:start}
+.timeline-marker{width:10px;height:10px;border-radius:50%;background:#2d9b72;margin-top:.35rem;box-shadow:0 0 0 4px #e5f4ec}
+.donation-print-label{display:none}
+@media(max-width:650px){.passport-header{flex-direction:column}.qr-preview{align-self:flex-start}.passport-details{grid-template-columns:1fr}}
+@media print{body{background:white!important}.no-print,.passport-actions{display:none!important}.passport-container{max-width:none}.passport-card{box-shadow:none;break-inside:avoid}.donation-print-label{display:flex!important;align-items:center;gap:1.5rem;border:2px solid #111;padding:1rem;margin-top:1rem;break-inside:avoid}.donation-print-label img{width:130px;height:130px}.print-donation-code{font-size:1.35rem;font-weight:800;letter-spacing:.08em}}
+</style>
 
 <div class="passport-container">
-
-    <!-- =====================================
-         DONATION SUMMARY
-         ===================================== -->
-
-    <section class="feature-card passport-card mb-4">
-
-        <div class="passport-header">
-
-            <div>
-
-                {% if can_manage %}
-
-                    <span class="badge text-bg-primary mb-2">
-                        NGO Intake Record
-                    </span>
-
-                    <h1 class="h2">Donation Intake Record</h1>
-
-                    <p class="text-secondary">
-                        Review the donation and update its verified status.
-                    </p>
-
-                {% elif public_view %}
-
-                    <span class="badge text-bg-secondary mb-2">
-                        Read-only record
-                    </span>
-
-                    <h1 class="h2">Donation Record</h1>
-
-                {% else %}
-
-                    <span class="badge text-bg-success mb-2">
-                        Donation Passport
-                    </span>
-
-                    <h1 class="h2">Your Donation Passport</h1>
-
-                {% endif %}
-
-                <p class="mb-0">
-                    <strong>Donation ID:</strong>
-                    <span class="donation-code">{{ donation.code }}</span>
-                </p>
-
-                <p class="small text-secondary mt-2 mb-0">
-                    Keep this ID available when handing over your donation.
-                </p>
-
-            </div>
-
-            {% if qr_image_url %}
-
-                <div class="qr-preview text-center">
-
-                    <a
-                        href="{{ qr_image_url }}"
-                        target="_blank"
-                        rel="noopener"
-                        title="Open QR code image"
-                    >
-                        <img
-                            src="{{ qr_image_url }}"
-                            alt="QR code for donation {{ donation.code }}"
-                            width="140"
-                            height="140"
-                        >
-                    </a>
-
-                    <p class="small text-secondary mt-2 mb-0">
-                        Scan or enter the donation ID.
-                    </p>
-
-                </div>
-
-            {% endif %}
-
-        </div>
-
-        <div class="passport-details mt-4">
-
-            <div>
-                <span class="detail-label">Receiving organisation</span>
-                <strong>{{ donation.ngo.name }}</strong>
-            </div>
-
-            <div>
-                <span class="detail-label">Donation source</span>
-                <strong>{{ donation.source | title }}</strong>
-            </div>
-
-            <div>
-                <span class="detail-label">Current status</span>
-                <strong>
-                    {{ donation.status | replace("_", " ") | title }}
-                </strong>
-            </div>
-
-            <div>
-                <span class="detail-label">Registered</span>
-                <strong>
-                    {{ donation.created_at | ist_datetime("%d %b %Y") }}
-                </strong>
-            </div>
-
-            {% if donation.received_at %}
-
-                <div>
-                    <span class="detail-label">Receipt verified</span>
-                    <strong>
-                        {{ donation.received_at | ist_datetime("%d %b %Y, %I:%M %p") }}
-                    </strong>
-                </div>
-
-            {% endif %}
-
-            {% if donation.campaign %}
-
-                <div>
-                    <span class="detail-label">Campaign</span>
-                    <strong>{{ donation.campaign.title }}</strong>
-                </div>
-
-            {% endif %}
-
-        </div>
-
-        {% if public_view %}
-
-            <div class="alert alert-info mt-4 mb-0" role="status">
-                This is a read-only record. Donor contact details are not
-                displayed, and this page does not independently verify
-                the physical items.
-            </div>
-
-        {% endif %}
-
-        {% if qr_image_url and not public_view %}
-
-            <div class="passport-actions no-print mt-4">
-
-                <button
-                    type="button"
-                    class="btn btn-primary"
-                    onclick="window.print()"
-                >
-                    Print donation label
-                </button>
-
-                <a
-                    href="{{ qr_image_url }}"
-                    download="{{ donation.code }}-QR.png"
-                    class="btn btn-outline-secondary"
-                >
-                    Download QR code
-                </a>
-
-            </div>
-
-        {% endif %}
-
-    </section>
-
-
-    <!-- =====================================
-         PRINTABLE BOX LABEL
-         ===================================== -->
-
-    {% if qr_image_url %}
-
-        <section class="donation-print-label">
-
-            <img
-                src="{{ qr_image_url }}"
-                alt="Donation QR code"
-                width="150"
-                height="150"
-            >
-
-            <div>
-
-                <h2>UMEED DONATION</h2>
-
-                <p>
-                    <strong>Donation ID</strong>
-                </p>
-
-                <p class="print-donation-code">
-                    {{ donation.code }}
-                </p>
-
-                <p>
-                    Scan the QR code or enter the donation ID
-                    at the receiving organisation.
-                </p>
-
-            </div>
-
-        </section>
-
-    {% endif %}
-
-
-    <!-- =====================================
-         ITEMISED RECORD
-         ===================================== -->
-
-    <section class="feature-card passport-card mb-4">
-
-        <h2 class="h4">Itemised donation record</h2>
-
-        <p class="text-secondary">
-            Declared, received, accepted, and rejected quantities.
-        </p>
-
-        {% if donation.items %}
-
-            <div class="table-responsive mt-3">
-
-                <table class="table align-middle">
-
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Declared</th>
-                            <th>Received</th>
-                            <th>Accepted</th>
-                            <th>Rejected</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-
-                        {% for item in donation.items %}
-
-                            <tr>
-
-                                <td>{{ item.item_name }}</td>
-
-                                <td>{{ item.declared_qty }}</td>
-
-                                <td>
-                                    {% if item.received_qty is not none %}
-                                        {{ item.received_qty }}
-                                    {% else %}
-                                        Pending
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    {% if item.accepted_qty is not none %}
-                                        {{ item.accepted_qty }}
-                                    {% else %}
-                                        Pending
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    {% if item.received_qty is not none
-                                          and item.accepted_qty is not none %}
-
-                                        {{ item.received_qty - item.accepted_qty }}
-
-                                    {% else %}
-
-                                        Pending
-
-                                    {% endif %}
-                                </td>
-
-                            </tr>
-
-                            {% if item.rejection_reason %}
-
-                                <tr class="rejection-row">
-
-                                    <td colspan="5">
-
-                                        <strong>
-                                            Rejection reason for {{ item.item_name }}:
-                                        </strong>
-
-                                        {{ item.rejection_reason }}
-
-                                    </td>
-
-                                </tr>
-
-                            {% endif %}
-
-                        {% endfor %}
-
-                    </tbody>
-
-                </table>
-
-            </div>
-
-        {% else %}
-
-            <p class="text-secondary mb-0">
-                No items have been recorded for this donation.
-            </p>
-
-        {% endif %}
-
-    </section>
-
-
-    <!-- =====================================
-         DONATION HISTORY
-         ===================================== -->
-
-    <section class="feature-card passport-card mb-4">
-
-        <h2 class="h4">Donation history</h2>
-
-        <p class="text-secondary">
-            Recorded events and their timestamps.
-        </p>
-
-        {% if events %}
-
-            <div class="timeline-list mt-4">
-
-                {% for event in events %}
-
-                    <div class="timeline-entry">
-
-                        <span
-                            class="timeline-marker"
-                            aria-hidden="true"
-                        ></span>
-
-                        <div>
-
-                            <h3 class="h6 mb-1">
-
-                                {{ event.event_type
-                                   | replace("_", " ")
-                                   | title }}
-
-                            </h3>
-
-                            <p class="small text-secondary mb-2">
-                                {{ event.created_at | ist_datetime }}
-                            </p>
-
-                            {% if event.note %}
-
-                                <p class="mb-0">
-                                    {{ event.note }}
-                                </p>
-
-                            {% endif %}
-
-                        </div>
-
-                    </div>
-
-                {% endfor %}
-
-            </div>
-
-        {% else %}
-
-            <p class="text-secondary mb-0">
-                No history updates have been recorded yet.
-            </p>
-
-        {% endif %}
-
-    </section>
-
-
-    <!-- =====================================
-         NGO PROCESSING UPDATE
-         ===================================== -->
-
-    {% if can_manage and donation.status == "verified" %}
-
-        <section class="feature-card passport-card mb-4 no-print">
-
-            <h2 class="h4">Record a processing update</h2>
-
-            <p class="text-secondary">
-                Record a verified milestone for the batch containing
-                the accepted items.
-            </p>
-
-            <form
-                method="post"
-                action="{{ url_for(
-                    'update_donation_stage',
-                    code=donation.code
-                ) }}"
-            >
-
-                <div class="mb-3">
-
-                    <label for="stage" class="form-label">
-                        Processing stage
-                    </label>
-
-                    <select
-                        id="stage"
-                        name="stage"
-                        class="form-select"
-                        required
-                    >
-                        <option value="sorted">Items sorted</option>
-                        <option value="allocated">Allocated to a programme</option>
-                        <option value="dispatched">Dispatched</option>
-                        <option value="delivery_confirmed">Delivery confirmed</option>
-                        <option value="distribution_reported">Distribution reported</option>
-                    </select>
-
-                </div>
-
-                <div class="mb-3">
-
-                    <label for="batch_code" class="form-label">
-                        Batch reference
-                    </label>
-
-                    <input
-                        id="batch_code"
-                        name="batch_code"
-                        class="form-control"
-                        maxlength="80"
-                        placeholder="Example: FLOOD-BATCH-01"
-                        required
-                    >
-
-                </div>
-
-                <div class="mb-3">
-
-                    <label for="note" class="form-label">
-                        Evidence or explanation
-                    </label>
-
-                    <textarea
-                        id="note"
-                        name="note"
-                        class="form-control"
-                        rows="3"
-                        maxlength="500"
-                    ></textarea>
-
-                </div>
-
-                <button type="submit" class="btn btn-primary">
-                    Record update
-                </button>
-
-            </form>
-
-        </section>
-
-    {% endif %}
-
-
-    <!-- =====================================
-         PAGE ACTIONS
-         ===================================== -->
-
-    <div class="passport-actions no-print mb-5">
-
+  <section class="feature-card passport-card mb-4">
+    <div class="passport-header">
+      <div>
         {% if can_manage %}
-
-            {% if donation.status in ["offered", "accepted", "received"] %}
-
-                <a
-                    href="{{ url_for(
-                        'verify_donation',
-                        code=donation.code
-                    ) }}"
-                    class="btn btn-primary"
-                >
-                    Verify receipt
-                </a>
-
-            {% endif %}
-
-            <a
-                href="{{ url_for('ngo_donations') }}"
-                class="btn btn-outline-secondary"
-            >
-                Back to donations
-            </a>
-
-        {% elif not public_view %}
-
-            {% if current_user.role == "donor"
-                  and donation.status in ["offered", "accepted"] %}
-
-                <form
-                    method="post"
-                    action="{{ url_for(
-                        'cancel_donation',
-                        code=donation.code
-                    ) }}"
-                >
-
-                    <button
-                        type="submit"
-                        class="btn btn-outline-danger"
-                    >
-                        Cancel donation offer
-                    </button>
-
-                </form>
-
-            {% endif %}
-
-            <a
-                href="{{ url_for('dashboard') }}"
-                class="btn btn-outline-secondary"
-            >
-                Back to dashboard
-            </a>
-
+          <span class="badge text-bg-primary mb-2">NGO Donation Record</span>
+          <h1 class="h2">Donation Record</h1>
+        {% elif public_view %}
+          <span class="badge text-bg-secondary mb-2">Read-only record</span>
+          <h1 class="h2">Donation Record</h1>
+        {% else %}
+          <span class="badge text-bg-success mb-2">Donation Passport</span>
+          <h1 class="h2">Your Donation Passport</h1>
         {% endif %}
+        <p class="mb-1"><strong>Donation ID:</strong> <span class="donation-code">{{ donation.code }}</span></p>
+        {% if is_vendor_procurement %}
+          <p class="small text-secondary mb-0">Use this reference to follow the progress of the products selected for this campaign.</p>
+        {% else %}
+          <p class="small text-secondary mb-0">For physical supplies, print the QR label and attach it clearly to the outside of the box.</p>
+        {% endif %}
+      </div>
 
+      {% if qr_image_url and not is_vendor_procurement %}
+        <div class="qr-preview text-center">
+          <a href="{{ qr_image_url }}" target="_blank" rel="noopener" title="Open QR code image">
+            <img src="{{ qr_image_url }}" alt="QR code for donation {{ donation.code }}" width="140" height="140">
+          </a>
+          <p class="small text-secondary mt-2 mb-0">Scan or enter the donation ID.</p>
+        </div>
+      {% endif %}
     </div>
 
-</div>
+    <div class="passport-details mt-4">
+      <div><span class="detail-label">Receiving organisation</span><strong>{{ donation.ngo.name }}</strong></div>
+      <div><span class="detail-label">Contribution type</span><strong>{{ 'Vendor procurement' if is_vendor_procurement else 'Physical in-kind donation' }}</strong></div>
+      <div>
+        <span class="detail-label">Current record status</span>
+        <strong>
+          {% if is_vendor_procurement and donation.status == 'offered' %}Request recorded
+          {% else %}{{ donation.status | replace('_', ' ') | title }}{% endif %}
+        </strong>
+      </div>
+      <div><span class="detail-label">Registered</span><strong>{{ donation.created_at | ist_datetime('%d %b %Y, %I:%M %p') }}</strong></div>
+      {% if donation.campaign %}<div><span class="detail-label">Campaign</span><strong>{{ donation.campaign.title }}</strong></div>{% endif %}
+      {% if not is_vendor_procurement %}
+        <div><span class="detail-label">Delivery preference</span>
+          <strong>{% if donation.delivery_method == 'collection_request' %}Pickup requested — awaiting confirmation{% elif donation.delivery_method == 'drop_off' %}Donor drop-off{% else %}{{ donation.delivery_method | replace('_', ' ') | title }}{% endif %}</strong>
+        </div>
+      {% endif %}
+    </div>
 
+    {% if public_view %}
+      <div class="alert alert-info mt-4 mb-0" role="status">This is a read-only record. Private donor contact details are not displayed.</div>
+    {% endif %}
+
+    {% if qr_image_url and not public_view and not is_vendor_procurement %}
+      <div class="passport-actions no-print mt-4 d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-primary" onclick="window.print()">Print donation label</button>
+        <a href="{{ qr_image_url }}" download="{{ donation.code }}-QR.png" class="btn btn-outline-secondary">Download QR code</a>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if qr_image_url and not is_vendor_procurement %}
+    <section class="donation-print-label">
+      <img src="{{ qr_image_url }}" alt="Donation QR code" width="150" height="150">
+      <div>
+        <h2>UMEED PHYSICAL DONATION</h2>
+        <p><strong>Donation ID</strong></p>
+        <p class="print-donation-code">{{ donation.code }}</p>
+        <p>Attach this label to the outside of the physical donation box so the receiving team can sort it.</p>
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="feature-card passport-card mb-4">
+    {% if is_vendor_procurement %}
+      <h2 class="h4">Products selected</h2>
+      <p class="text-secondary">The products and quantities associated with this contribution.</p>
+      {% if donation.items %}
+        <div class="table-responsive mt-3">
+          <table class="table align-middle">
+            <thead><tr><th>Product</th><th>Quantity selected</th></tr></thead>
+            <tbody>{% for item in donation.items %}<tr><td>{{ item.item_name }}</td><td>{{ item.declared_qty }}</td></tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      {% else %}<p class="text-secondary mb-0">No products are associated with this contribution yet.</p>{% endif %}
+    {% else %}
+      <h2 class="h4">Physical donation item record</h2>
+      <p class="text-secondary">Declared, received, accepted and rejected quantities for the supplies physically provided.</p>
+      {% if donation.items %}
+        <div class="table-responsive mt-3">
+          <table class="table align-middle">
+            <thead><tr><th>Item</th><th>Declared</th><th>Received</th><th>Accepted</th><th>Rejected</th></tr></thead>
+            <tbody>
+              {% for item in donation.items %}
+                <tr>
+                  <td>{{ item.item_name }}</td>
+                  <td>{{ item.declared_qty }}</td>
+                  <td>{{ item.received_qty if item.received_qty is not none else 'Pending' }}</td>
+                  <td>{{ item.accepted_qty if item.accepted_qty is not none else 'Pending' }}</td>
+                  <td>{% if item.received_qty is not none and item.accepted_qty is not none %}{{ item.received_qty - item.accepted_qty }}{% else %}Pending{% endif %}</td>
+                </tr>
+                {% if item.rejection_reason %}<tr><td colspan="5"><strong>Reason for {{ item.item_name }} being declined:</strong> {{ item.rejection_reason }}</td></tr>{% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}<p class="text-secondary mb-0">No physical items have been recorded.</p>{% endif %}
+    {% endif %}
+  </section>
+
+  <section class="feature-card passport-card mb-4">
+    <h2 class="h4">{{ 'Product progress history' if is_vendor_procurement else 'Physical donation history' }}</h2>
+    <p class="text-secondary">Milestones are shown when an authorised team member records them.</p>
+    {% set ns = namespace(shown=0) %}
+    {% if events %}
+      <div class="timeline-list mt-4">
+        {% for event in events %}
+          {% if not is_vendor_procurement or event.event_type in ['offer_submitted', 'procurement_started', 'procured', 'sorted', 'allocated', 'dispatched', 'delivery_confirmed', 'distribution_reported', 'reached_recipients', 'cancelled'] %}
+            {% set ns.shown = ns.shown + 1 %}
+            <div class="timeline-entry">
+              <span class="timeline-marker" aria-hidden="true"></span>
+              <div>
+                <h3 class="h6 mb-1">
+                  {% if is_vendor_procurement %}
+                    {% set labels = {
+                      'offer_submitted': 'Contribution request recorded',
+                      'procurement_started': 'Procurement started',
+                      'procured': 'Supplies procured',
+                      'sorted': 'Supplies prepared',
+                      'allocated': 'Allocated to response',
+                      'dispatched': 'Supplies dispatched',
+                      'delivery_confirmed': 'Supplies delivered',
+                      'distribution_reported': 'Distribution reported',
+                      'reached_recipients': 'Supplies reached people in need',
+                      'cancelled': 'Request cancelled'
+                    } %}
+                    {{ labels.get(event.event_type, 'Supply progress updated') }}
+                  {% else %}
+                    {{ event.event_type | replace('_', ' ') | title }}
+                  {% endif %}
+                </h3>
+                <p class="small text-secondary mb-0">{{ event.created_at | ist_datetime }}</p>
+                {% if event.note and not is_vendor_procurement %}<p class="mt-2 mb-0">{{ event.note }}</p>{% endif %}
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if not events or (is_vendor_procurement and ns.shown == 0) %}
+      <p class="text-secondary mb-0">No progress milestones have been recorded yet.</p>
+    {% endif %}
+  </section>
+
+  {% if can_manage and is_vendor_procurement %}
+    <section class="feature-card passport-card mb-4 no-print">
+      <h2 class="h4">Update product progress</h2>
+      <p class="text-secondary">Record a milestone only after it has actually occurred.</p>
+      <form method="post" action="{{ url_for('update_procurement_stage', code=donation.code) }}">
+        <div class="mb-3">
+          <label for="procurement-stage" class="form-label">Progress milestone</label>
+          <select id="procurement-stage" name="stage" class="form-select" required>
+            <option value="procurement_started">Procurement started</option>
+            <option value="procured">Supplies procured</option>
+            <option value="sorted">Supplies prepared</option>
+            <option value="allocated">Allocated to response</option>
+            <option value="dispatched">Supplies dispatched</option>
+            <option value="delivery_confirmed">Supplies delivered</option>
+            <option value="distribution_reported">Distribution reported</option>
+            <option value="reached_recipients">Supplies reached people in need</option>
+          </select>
+        </div>
+        <div class="mb-3"><label for="procurement-note" class="form-label">Optional update note</label><textarea id="procurement-note" name="note" maxlength="500" rows="2" class="form-control"></textarea></div>
+        <button type="submit" class="btn btn-primary">Record progress update</button>
+      </form>
+    </section>
+  {% elif can_manage and donation.status == 'verified' %}
+    <section class="feature-card passport-card mb-4 no-print">
+      <h2 class="h4">Record a physical-supply processing update</h2>
+      <form method="post" action="{{ url_for('update_donation_stage', code=donation.code) }}">
+        <div class="mb-3"><label for="stage" class="form-label">Processing stage</label>
+          <select id="stage" name="stage" class="form-select" required>
+            <option value="sorted">Items sorted</option><option value="allocated">Allocated to a programme</option><option value="dispatched">Dispatched</option><option value="delivery_confirmed">Delivery confirmed</option><option value="distribution_reported">Distribution reported</option>
+          </select>
+        </div>
+        <div class="mb-3"><label for="batch_code" class="form-label">Batch reference</label><input id="batch_code" name="batch_code" class="form-control" maxlength="80" placeholder="Example: FLOOD-BATCH-01" required></div>
+        <div class="mb-3"><label for="note" class="form-label">Evidence or explanation</label><textarea id="note" name="note" class="form-control" rows="3" maxlength="500"></textarea></div>
+        <button type="submit" class="btn btn-primary">Record update</button>
+      </form>
+    </section>
+  {% endif %}
+
+  <div class="passport-actions no-print mb-5 d-flex flex-wrap gap-2">
+    {% if can_manage %}
+      {% if not is_vendor_procurement and donation.status in ['offered', 'accepted', 'received'] %}<a href="{{ url_for('verify_donation', code=donation.code) }}" class="btn btn-primary">Verify physical receipt</a>{% endif %}
+      <a href="{{ url_for('ngo_donations') }}" class="btn btn-outline-secondary">Back to donations</a>
+    {% elif not public_view %}
+      {% if current_user.role == 'donor' and donation.donor_id == current_user.id and donation.status in ['offered', 'accepted'] %}
+        <form method="post" action="{{ url_for('cancel_donation', code=donation.code) }}">
+          <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Cancel this contribution request?')">Cancel request</button>
+        </form>
+      {% endif %}
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Back to dashboard</a>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

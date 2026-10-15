@@ -1,220 +1,154 @@
 {% extends "base.html" %}
-
-{% block title %}Donate Supplies | Umeed{% endblock %}
-
+{% block title %}In-kind donation | Umeed{% endblock %}
 {% block content %}
+<style>
+.kind-page{max-width:1120px;margin:0 auto}
+.kind-intro,.kind-panel{background:#fff;border:1px solid #e6eaf0;border-radius:18px;padding:1.25rem;box-shadow:0 5px 22px #1729430b;margin-bottom:1.25rem}
+.kind-products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.kind-product{border:1px solid #dce2eb;border-radius:15px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.kind-product img{width:100%;height:170px;object-fit:cover;background:#f1f4f8}
+.kind-product-body{padding:1rem;display:flex;flex-direction:column;flex:1}
+.kind-product h3{font-size:1.04rem;font-weight:800;margin:0 0 .3rem}
+.kind-price{font-size:1.2rem;font-weight:800;margin-top:auto;padding-top:.8rem}
+.kind-muted{font-size:.84rem;color:#65738a}
+.qty-control{display:flex;align-items:center;justify-content:space-between;border:1px solid #d8dee8;border-radius:10px;overflow:hidden;margin-top:.8rem}
+.qty-control button{width:44px;height:42px;border:0;background:#f1f4f8;font-size:1.4rem;font-weight:700}
+.qty-control input{width:64px;border:0;text-align:center;font-weight:800;appearance:textfield}
+.qty-control input::-webkit-inner-spin-button,.qty-control input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.pack-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;counter-reset:pack}
+.pack-step{background:#f6f8fb;border-radius:12px;padding:1rem;counter-increment:pack}
+.pack-step h3:before{content:counter(pack) ". ";color:#217a5a}
+@media(max-width:850px){.kind-products{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.kind-products,.pack-steps{grid-template-columns:1fr}.kind-product img{height:210px}}
+</style>
 
-<div class="row justify-content-center">
+<div class="kind-page">
+  <header class="kind-intro">
+    <p class="text-uppercase small fw-bold text-secondary mb-2">{{ campaign.ngo.name }} · {{ campaign.location }}</p>
+    <h1 class="h2 fw-bold">In-kind donation</h1>
+    <p class="text-secondary mb-2">{{ campaign.title }}</p>
+    <p class="mb-0">Choose the required supplies and quantities you would like to sponsor. This demo shows an estimated basket value; no real payment is collected.</p>
+  </header>
 
-    <div class="col-lg-9">
+  <form method="post" id="kindForm">
+    <input type="hidden" name="phase" value="review">
+    <section class="kind-panel">
+      <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+        <div><h2 class="h4 fw-bold mb-1">Supplies currently needed</h2><p class="text-secondary mb-0">Select quantities using − and +. Pending requests reduce availability until resolved.</p></div>
+        <span class="badge text-bg-light">Demo checkout · no charge</span>
+      </div>
 
-        <div class="feature-card">
+      {% for product in products %}
 
-            <h1 class="h2">Donate supplies</h1>
+    <article class="product-card"
+             data-price="{{ product.unit_price }}">
 
-            <p class="text-secondary">
-                Campaign: <strong>{{ campaign.title }}</strong>
-            </p>
+        <img
+            src="{{ product.image_url or 'https://placehold.co/600x450/f8fafc/1d3557?text=Relief+product' }}"
+            alt="{{ product.name }}"
+            class="img-fluid"
+        >
 
-            <p>
-                Your donation will be recorded against this campaign.
-                The NGO must confirm the offer before it is treated as accepted.
-            </p>
+        <h3>{{ product.name }}</h3>
 
-            <form method="post">
+        <p class="text-secondary">
+            {{ product.required_qty }} required
+        </p>
 
-                <h2 class="h5 mt-4">Items in your donation</h2>
+        <strong>₹{{ "{:,}".format(product.unit_price) }}/unit</strong>
 
-                <div id="itemRows">
+        <!-- Keep the existing quantity controls here. -->
 
-                    <div class="donation-item-row row g-2 mb-3">
+    </article>
 
-                        <div class="col-md-5">
-                            <label class="form-label">Item name</label>
+{% endfor %}
 
-                            <select name="item_name" class="form-select" required>
-                                <option value="">Choose a current need</option>
-                                {% for need in inventory if need.remaining > 0 %}
-                                <option value="{{ need.name }}">{{ need.name }} — {{ need.remaining }} remaining</option>
-                                {% endfor %}
-                            </select>
-                        </div>
+      {% if products %}
+      <div class="kind-products">
+        {% for product in products %}
+        <article class="kind-product">
+          <img src="{{ product.image }}" alt="{{ product.name }}" loading="lazy">
+          <div class="kind-product-body">
+            <h3>{{ product.name }}</h3>
+            <div class="kind-muted">{{ product.accepted }} / {{ product.required }} accepted</div>
+            <div class="kind-muted">{{ product.available }} still available</div>
+            <div class="kind-price">₹{{ "{:,.0f}".format(product.unit_price) }}<span class="kind-muted"> / {{ product.unit_label }}</span></div>
+            <div class="kind-muted">Indicative demo value; confirm the NGO's current rate before launch.</div>
+            <div class="qty-control" aria-label="Choose quantity for {{ product.name }}">
+              <button type="button" class="qty-minus" aria-label="Decrease {{ product.name }} quantity" {% if product.available <= 0 %}disabled{% endif %}>−</button>
+              <input type="number" name="qty_{{ product.index }}" value="0" min="0" max="{{ [product.available, 10000]|min }}" step="1" inputmode="numeric" data-price="{{ product.unit_price }}" data-name="{{ product.name }}" {% if product.available <= 0 %}disabled{% endif %} aria-label="{{ product.name }} quantity">
+              <button type="button" class="qty-plus" aria-label="Increase {{ product.name }} quantity" {% if product.available <= 0 %}disabled{% endif %}>+</button>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="alert alert-warning mb-0">This campaign needs requirements in the format <code>Rice (5 kg bag): 100</code>, one per line, before products can be selected. Open the NGO needs editor to set the ten requested products.</div>
+      {% endif %}
+    </section>
 
-                        <div class="col-md-3">
-                            <label class="form-label">Quantity</label>
+    <section class="kind-panel">
+      <h2 class="h4 fw-bold">Packaging guide for physical supplies</h2>
+      <p class="text-secondary">These steps apply when you physically bring or send items to the NGO. The demo checkout only records a simulated contribution; it does not purchase or dispatch goods.</p>
+      <div class="pack-steps">
+        <article class="pack-step"><h3 class="h6 fw-bold">Check packaging and expiry</h3><p class="mb-0">Food, baby food, and milk powder should be sealed, unopened, in original packaging, and within expiry. Keep items clean and dry.</p></article>
+        <article class="pack-step"><h3 class="h6 fw-bold">Group and count items</h3><p class="mb-0">Group the same product together and count it before sealing. Separate food from non-food supplies, such as torches and tarpaulins.</p></article>
+        <article class="pack-step"><h3 class="h6 fw-bold">Pack and label clearly</h3><p class="mb-0">Use a sturdy, securely closed carton or bag. Write the exact item name, pack size, and quantity on the outside so the team can sort it quickly.</p></article>
+        <article class="pack-step"><h3 class="h6 fw-bold">Attach the donation QR label</h3><p class="mb-0">Register the physical donation, print the QR from your Donation Passport, and attach it to the main box or each parcel as instructed. Keep the code visible and scannable.</p></article>
+      </div>
+      <div class="alert alert-info mt-3 mb-0"><strong>Made a packing mistake?</strong> Don't worry—if a label is unclear or a quantity needs correction, the team will try to contact you and clarify it before sorting. Unsafe, contaminated, expired, or unsealed food products may need to be set aside or declined for safety.</div>
+    </section>
 
-                            <input
-                                name="declared_qty"
-                                type="number"
-                                min="1"
-                                max="10000"
-                                class="form-control"
-                                required
-                            >
-                        </div>
-
-                        <div class="col-md-4">
-                            <label class="form-label">Condition</label>
-
-                            <select
-                                name="condition"
-                                class="form-select"
-                                required
-                            >
-                                <option value="good">Good</option>
-                                <option value="usable">Usable</option>
-                                <option value="needs_review">Needs review</option>
-                            </select>
-                        </div>
-
-                    </div>
-
-                </div>
-
-                <button
-                    type="button"
-                    id="addItemButton"
-                    class="btn btn-outline-secondary btn-sm mb-4"
-                >
-                    + Add another item
-                </button>
-
-                <div class="mb-3">
-
-                    <label
-                        for="delivery_method"
-                        class="form-label"
-                    >
-                        Delivery method
-                    </label>
-
-                    <select
-                        name="delivery_method"
-                        id="delivery_method"
-                        class="form-select"
-                    >
-                        <option value="drop_off">
-                            I will drop off the donation
-                        </option>
-
-                        <option value="collection_request">
-                            Request a collection
-                        </option>
-                    </select>
-
-                    <div class="form-text">
-                        A collection request is not a confirmed pickup.
-                        The NGO must review availability separately.
-                    </div>
-
-                </div>
-
-                <div class="mb-4">
-
-                    <label for="notes" class="form-label">
-                        Additional notes (optional)
-                    </label>
-
-                    <textarea
-                        id="notes"
-                        name="notes"
-                        class="form-control"
-                        rows="3"
-                        maxlength="1000"
-                    ></textarea>
-
-                </div>
-
-                <button type="submit" class="btn btn-primary" {% if not has_open_needs %}disabled{% endif %}>
-
-                <a
-                    href="{{ url_for('campaign_detail', campaign_id=campaign.id) }}"
-                    class="btn btn-outline-secondary ms-2"
-                >
-                    Cancel
-                </a>
-
-                  {% if not has_open_needs %}
-                <div class="alert alert-success" role="status">
-                    All listed requirements are currently fulfilled or committed. Please check back after the NGO updates its needs.
-                </div>
-                  {% endif %}
-
-            </form>
-
-        </div>
-
-    </div>
-
+    <section class="kind-panel">
+      <h2 class="h5 fw-bold">Delivery preference</h2>
+      <div class="mb-3">
+        <select name="delivery_method" class="form-select" required>
+          <option value="drop_off">I will drop off physical supplies</option>
+          <option value="collection_request">Request a collection (not yet confirmed)</option>
+        </select>
+      </div>
+      <div class="mb-3"><label for="notes" class="form-label">Optional note</label><textarea id="notes" name="notes" maxlength="1000" rows="2" class="form-control" placeholder="Any special packing or delivery note"></textarea></div>
+      <div class="d-flex justify-content-between flex-wrap align-items-center gap-3">
+        <div><span class="text-secondary">Demo basket value</span><div class="h3 fw-bold mb-0" id="basketTotal">₹0</div></div>
+        <button type="submit" class="btn btn-primary btn-lg">Continue to demo checkout</button>
+      </div>
+      <p class="small text-secondary mt-3 mb-0">Demo only: no real payment is processed. Selected quantities are registered as an offer and remain pending until the NGO confirms fulfilment and accepted quantities.</p>
+    </section>
+  </form>
 </div>
 
-
 <script>
-    const itemRows = document.getElementById("itemRows");
-    const addItemButton = document.getElementById("addItemButton");
-    const itemOptions = itemRows.querySelector('select[name="item_name"]').innerHTML;
-
-    addItemButton.addEventListener("click", () => {
-
-        if (itemRows.children.length >= 10) {
-            alert("You can add a maximum of 10 item types.");
-            return;
-        }
-
-        const row = document.createElement("div");
-
-        row.className = "donation-item-row row g-2 mb-3";
-
-        row.innerHTML = `
-            <div class="col-md-5">
-                <label class="form-label">Item name</label>
-                <select name="item_name" class="form-select" required>
-                    ${itemOptions}
-                </select>
-            </div>
-
-            <div class="col-md-3">
-                <label class="form-label">Quantity</label>
-                <input
-                    name="declared_qty"
-                    type="number"
-                    min="1"
-                    max="10000"
-                    class="form-control"
-                    required
-                >
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label">Condition</label>
-                <select name="condition" class="form-select" required>
-                    <option value="good">Good</option>
-                    <option value="usable">Usable</option>
-                    <option value="needs_review">Needs review</option>
-                </select>
-            </div>
-
-            <div class="col-12">
-                <button
-                    type="button"
-                    class="btn btn-link text-danger remove-item"
-                >
-                    Remove item
-                </button>
-            </div>
-        `;
-
-        itemRows.appendChild(row);
-
+(() => {
+  const form = document.getElementById('kindForm');
+  const inputs = [...form.querySelectorAll('input[type="number"][data-price]')];
+  const totalNode = document.getElementById('basketTotal');
+  const money = value => '₹' + Number(value).toLocaleString('en-IN', {maximumFractionDigits: 0});
+  function updateTotal() {
+    let total = 0;
+    inputs.forEach(input => {
+      const qty = Math.max(0, Number.parseInt(input.value || '0', 10) || 0);
+      const max = Number.parseInt(input.max || '10000', 10);
+      if (qty > max) input.value = max;
+      total += Math.min(qty, max) * Number(input.dataset.price || 0);
     });
-
-    itemRows.addEventListener("click", (event) => {
-
-        if (event.target.classList.contains("remove-item")) {
-            event.target.closest(".donation-item-row").remove();
-        }
-
-    });
+    totalNode.textContent = money(total);
+  }
+  form.querySelectorAll('.qty-minus').forEach(button => button.addEventListener('click', () => {
+    const input = button.closest('.qty-control').querySelector('input');
+    input.value = Math.max(0, Number(input.value || 0) - 1); updateTotal();
+  }));
+  form.querySelectorAll('.qty-plus').forEach(button => button.addEventListener('click', () => {
+    const input = button.closest('.qty-control').querySelector('input');
+    input.value = Math.min(Number(input.max || 10000), Number(input.value || 0) + 1); updateTotal();
+  }));
+  inputs.forEach(input => input.addEventListener('input', updateTotal));
+  form.addEventListener('submit', event => {
+    const chosen = inputs.some(input => Number(input.value || 0) > 0);
+    if (!chosen) { event.preventDefault(); alert('Please choose a quantity for at least one supply.'); return; }
+    inputs.forEach(input => { if (Number(input.value || 0) <= 0) input.disabled = true; });
+  });
+  updateTotal();
+})();
 </script>
-
 {% endblock %}
