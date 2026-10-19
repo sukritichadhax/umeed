@@ -553,26 +553,104 @@ def campaign_product_options(campaign):
     return products
 
 
+def parse_inkind_catalog(raw):
+    """Parse physical in-kind products stored as name|target quantity|image URL lines."""
+    rows = []
+    seen = set()
+    for line_number, line in enumerate((raw or "").splitlines(), start=1):
+        if not line.strip():
+            continue
+        parts = [part.strip() for part in line.split("|", 2)]
+        if len(parts) != 3:
+            raise ValueError(
+                f"In-kind product line {line_number} must use: Product name | target quantity | image URL."
+            )
+        name, qty_text, image_url = parts
+        if not name or len(name) > 120 or "|" in name:
+            raise ValueError(f"Enter a product name of 1–120 characters on in-kind line {line_number}.")
+        key = normalize_supply_name(name)
+        if key in seen:
+            raise ValueError(f"The in-kind product '{name}' appears more than once.")
+        seen.add(key)
+        try:
+            required_qty = int(qty_text)
+        except ValueError:
+            raise ValueError(f"Target quantity must be a whole number on in-kind line {line_number}.")
+        if not 1 <= required_qty <= 1_000_000:
+            raise ValueError(f"Target quantity must be from 1 to 1,000,000 on in-kind line {line_number}.")
+        if image_url and not image_url.startswith(("https://", "http://", "/static/")):
+            raise ValueError(f"Use an HTTP/HTTPS image URL or /static/ path on in-kind line {line_number}.")
+        if len(image_url) > 1000:
+            raise ValueError(f"Image URL is too long on in-kind line {line_number}.")
+        rows.append({"name": name, "required_qty": required_qty, "image_url": image_url})
+    if len(rows) > 30:
+        raise ValueError("A campaign can have at most 30 physical in-kind product types.")
+    return rows
+
+
+def campaign_inkind_editor_rows(campaign):
+    """Load editable physical products, falling back to legacy required_items."""
+    raw = getattr(campaign, "inkind_catalog", None)
+    if raw and raw.strip():
+        try:
+            rows = parse_inkind_catalog(raw)
+            for row in rows:
+                row["image_url"] = row.get("image_url", "")
+            return rows
+        except ValueError:
+            app.logger.warning("Invalid in-kind catalogue for campaign %s; falling back to required_items.", campaign.id)
+    rows = []
+    for line in (campaign.required_items or "").splitlines():
+        match = re.match(r"^\s*(.+?)\s*:\s*(\d+)\s*$", line)
+        if match:
+            rows.append({"name": match.group(1).strip(), "required_qty": int(match.group(2)), "image_url": ""})
+    return rows
+
+
 def campaign_inkind_options(campaign):
-    """Physical in-kind needs, always sourced from campaign.required_items."""
+    """Build donor-facing physical in-kind cards from the NGO-editable catalogue."""
+    saved_rows = campaign_inkind_editor_rows(campaign)
+    summary_by_key = {
+        normalize_supply_name(row["name"]): row
+        for row in campaign_supply_summary(campaign)
+    }
     products = []
-    for index, need in enumerate(campaign_supply_summary(campaign)):
-        key = normalize_supply_name(need["name"])
+    for index, row in enumerate(saved_rows):
+        key = normalize_supply_name(row["name"])
+        tracker = summary_by_key.get(key, {})
         meta = DEMO_PRODUCT_META.get(key, {})
+        required = int(tracker.get("required", row["required_qty"]))
+        accepted = int(tracker.get("accepted", 0))
+        committed = int(tracker.get("committed", 0))
+        available = int(tracker.get("available", max(0, required - accepted - committed)))
+        image = row.get("image_url") or meta.get("image") or (
+            "https://placehold.co/600x450/f8fafc/1d3557?text=Physical+donation"
+        )
+        name = row["name"]
+        unit_label = (
+            name.rsplit("(", 1)[1].split(")", 1)[0].strip()
+            if "(" in name and ")" in name
+            else meta.get("unit_label", "unit")
+        )
+        percent = min(100, round(accepted * 100 / required)) if required else 0
         products.append({
-            **need,
             "index": index,
+            "name": name,
+            "required": required,
+            "accepted": accepted,
+            "committed": committed,
+            "available": available,
+            "percent": percent,
+            "status": tracker.get("status", "Needs supplies"),
             "unit_price": int(meta.get("unit_price", 0)),
-            "unit_label": meta.get("unit_label", "unit"),
-            "image": meta.get("image") or (
-                "https://placehold.co/600x450/f8fafc/1d3557?text=Physical+donation"
-            ),
-            "image_url": meta.get("image", ""),
+            "unit_label": unit_label,
+            "image": image,
+            "image_url": image,
         })
     return products
 
 
-def save_product_image(upload, campaign_id, product_index):
+def save_product_image(upload, campaign_id, product_index, kind="product"):
     """Validate and save a PNG/JPEG/WebP upload under static for the local prototype."""
     if not upload or not upload.filename:
         return None
@@ -600,7 +678,8 @@ def save_product_image(upload, campaign_id, product_index):
 
     upload_dir = BASE_DIR / "static" / "campaign_product_images"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"campaign_{campaign_id}_product_{product_index}_{secrets.token_hex(6)}{extensions[image_format]}"
+    safe_kind = "inkind" if kind == "inkind" else "product"
+    filename = f"campaign_{campaign_id}_{safe_kind}_{product_index}_{secrets.token_hex(6)}{extensions[image_format]}"
     destination = upload_dir / filename
 
     # Re-encode the file so embedded metadata is not retained.
@@ -610,6 +689,93 @@ def save_product_image(upload, campaign_id, product_index):
     image.save(destination, format=image_format, **save_options)
 
     return f"/static/campaign_product_images/{filename}"
+
+
+def parse_editor_catalog_from_form(prefix, campaign_id, include_price=True):
+    """Validate dynamic editor rows and persist optional per-row image uploads."""
+    names = request.form.getlist(f"{prefix}_name")
+    quantities = request.form.getlist(f"{prefix}_required_qty")
+    prices = request.form.getlist(f"{prefix}_unit_price") if include_price else []
+    image_urls = request.form.getlist(f"{prefix}_image_url")
+
+    if not (len(names) == len(quantities) == len(image_urls)):
+        raise ValueError(f"The {prefix} product rows are incomplete. Refresh the editor and try again.")
+    if include_price and len(names) != len(prices):
+        raise ValueError("Some Donate Products rows are missing a unit price.")
+    if len(names) > (20 if include_price else 30):
+        raise ValueError("The product catalogue has reached its maximum number of rows.")
+
+    rows = []
+    seen = set()
+    for index, raw_name in enumerate(names):
+        name = raw_name.strip()
+        qty_text = quantities[index].strip()
+        image_url = image_urls[index].strip()
+        price_text = prices[index].strip() if include_price else "0"
+        upload = request.files.get(f"{prefix}_image_{index}")
+
+        # Ignore a completely blank row left by the Add Product interface.
+        if not name and not qty_text and not price_text and not image_url and not (upload and upload.filename):
+            continue
+        if not name:
+            raise ValueError(f"Enter a product name on row {index + 1} of the {prefix} catalogue.")
+        if len(name) > 120 or "|" in name or "\n" in name or "\r" in name:
+            raise ValueError(f"Product names on row {index + 1} must be 1–120 characters and cannot contain | or new lines.")
+
+        key = normalize_supply_name(name)
+        if key in seen:
+            raise ValueError(f"'{name}' appears more than once in the {prefix} catalogue.")
+        seen.add(key)
+
+        try:
+            quantity = int(qty_text)
+        except ValueError:
+            raise ValueError(f"Enter a whole-number target quantity for '{name}'.")
+        if not 1 <= quantity <= 1_000_000:
+            raise ValueError(f"Target quantity for '{name}' must be from 1 to 1,000,000.")
+
+        price = 0
+        if include_price:
+            try:
+                price = int(price_text)
+            except ValueError:
+                raise ValueError(f"Enter a whole-number unit price for '{name}'.")
+            if not 0 <= price <= 10_000_000:
+                raise ValueError(f"Unit price for '{name}' must be between ₹0 and ₹10,000,000.")
+
+        if image_url and not image_url.startswith(("https://", "http://", "/static/")):
+            raise ValueError(f"Use an HTTP/HTTPS image URL or /static/ path for '{name}'.")
+        if len(image_url) > 1000:
+            raise ValueError(f"Image URL for '{name}' is too long.")
+
+        if upload and upload.filename:
+            image_url = save_product_image(upload, campaign_id, index, kind=prefix)
+
+        row = {
+            "name": name,
+            "required_qty": quantity,
+            "image_url": image_url,
+        }
+        if include_price:
+            row["unit_price"] = price
+        rows.append(row)
+
+    if not rows:
+        raise ValueError(f"Add at least one product to the {prefix} catalogue.")
+    return rows
+
+
+def catalog_rows_for_editor(campaign, kind):
+    """Load catalogues into arrays for the visual add/remove row editor."""
+    if kind == "product":
+        raw = campaign.product_catalog or DEFAULT_PRODUCT_CATALOG
+        try:
+            rows = parse_product_catalog(raw)
+        except ValueError:
+            rows = parse_product_catalog(DEFAULT_PRODUCT_CATALOG)
+        return [dict(row, index=i) for i, row in enumerate(rows)]
+    rows = campaign_inkind_editor_rows(campaign)
+    return [dict(row, index=i) for i, row in enumerate(rows)]
 
 
 def get_selected_campaign_products(campaign):
@@ -1229,15 +1395,16 @@ def create_campaign():
         title = request.form.get("title", "").strip()
         emergency_type = request.form.get("emergency_type", "").strip()
         location = request.form.get("location", "").strip()
-        description = request.form.get("description", request.form.get("story_who_helping", "")).strip()
+        # Preserve the old description because the editor no longer
+        # displays a separate Main campaign description field.
+        description = campaign.description or ""
         required_items = request.form.get("required_items", "").strip()
         evidence_summary = request.form.get("evidence_summary", "").strip()
         evidence_url = request.form.get("evidence_url", "").strip()
         needs_source = request.form.get("needs_source", "").strip()
 
-        if not all([title, emergency_type, location, description, required_items,
-                    evidence_summary, evidence_url, needs_source]):
-            flash("Complete all required campaign and evidence fields.", "error")
+        if not all([title, emergency_type, location]):
+            flash("Complete the campaign title, category, and location.", "error")
             return render_template("create_campaign.html", emergency_types=emergency_types), 400
         if emergency_type not in emergency_types:
             flash("Please select a valid emergency category.", "error")
@@ -1252,12 +1419,7 @@ def create_campaign():
             flash("One or more campaign evidence fields is too long.", "error")
             return render_template("create_campaign.html", emergency_types=emergency_types), 400
         try:
-            parsed_requirements = parse_campaign_requirements(required_items)
-            # Store units as part of the item name so existing inventory tracking
-            # remains compatible with the current database schema.
-            required_items = "\n".join(
-                f"{item['name']}: {item['required']}" for item in parsed_requirements
-            )
+            parse_campaign_requirements(required_items)
         except ValueError as error:
             flash(str(error), "error")
             return render_template("create_campaign.html", emergency_types=emergency_types), 400
@@ -1502,39 +1664,26 @@ def normalize_item_name(value):
 
 
 def parse_campaign_requirements(raw_text):
-    """Parse needs such as 'Rice: 100', 'Rice: 100 kg', or 'Oil: 30 litres'.
-
-    Units are stored with the item name (for example, 'Rice (kg)') so existing
-    quantity tracking continues to work without a database migration.
-    """
+    """Parse requirement lines such as 'Blankets: 100'."""
     requirements = []
     seen = set()
-
-    unit_pattern = r"(kilograms?|kgs?|kg|grams?|g|litres?|liters?|l|millilitres?|milliliters?|ml|tonnes?|tons?|bags?|boxes?|packets?|packs?|bottles?|cans?|units?|pieces?|meals?)"
 
     for line_number, line in enumerate((raw_text or "").splitlines(), start=1):
         line = line.strip()
         if not line:
             continue
 
-        match = re.fullmatch(
-            rf"(.{{1,120}}?)\s*:\s*(\d{{1,7}})(?:\s+{unit_pattern})?",
-            line,
-            flags=re.IGNORECASE,
-        )
+        match = re.fullmatch(r"(.{1,120}?)\s*:\s*(\d{1,7})", line)
         if not match:
             raise ValueError(
-                f"Requirement line {line_number} must use 'Item: quantity [unit]', "
-                "for example 'Rice: 100 kg' or 'Blankets: 50 units'."
+                f"Requirement line {line_number} must use 'Item name: quantity', "
+                "for example 'Blankets: 100'."
             )
 
         name = match.group(1).strip()
         quantity = int(match.group(2))
-        unit = match.group(3)
-        if unit:
-            name = f"{name} ({unit})"
-
         key = normalize_supply_name(name)
+
         if not key:
             raise ValueError(f"Requirement line {line_number} has no item name.")
         if quantity < 1 or quantity > 1000000:
@@ -1550,7 +1699,7 @@ def parse_campaign_requirements(raw_text):
         })
 
     if not requirements:
-        raise ValueError("Add at least one requirement using 'Item: quantity [unit]' on each line.")
+        raise ValueError("Add at least one requirement using 'Item name: quantity' on each line.")
 
     return requirements
 
@@ -2811,7 +2960,7 @@ def ngo_campaigns():
 
 @app.route(
     "/ngo/campaigns/<int:campaign_id>/edit",
-    methods=["GET", "POST"]
+    methods=["GET", "POST"],
 )
 @login_required
 def edit_campaign(campaign_id):
@@ -2822,7 +2971,7 @@ def edit_campaign(campaign_id):
 
     campaign = Campaign.query.filter_by(
         id=campaign_id,
-        ngo_id=ngo.id
+        ngo_id=ngo.id,
     ).first_or_404()
 
     emergency_types = [
@@ -2833,199 +2982,165 @@ def edit_campaign(campaign_id):
         "Emergency preparedness",
         "Other humanitarian emergency",
     ]
-
     form_values = request.form if request.method == "POST" else {}
 
-    # Build editor rows from the stored catalogue on GET. On a failed POST,
-    # rebuild from submitted fields so validation errors do not erase user input.
-    if request.method == "POST":
-        product_names = request.form.getlist("product_name")
-        product_quantities = request.form.getlist("product_required_qty")
-        product_prices = request.form.getlist("product_unit_price")
-        product_image_urls = request.form.getlist("product_image_url")
-        product_rows = []
-        for i, name in enumerate(product_names):
-            product_rows.append({
+    def request_rows(kind, include_price):
+        names = request.form.getlist(f"{kind}_name")
+        quantities = request.form.getlist(f"{kind}_required_qty")
+        images = request.form.getlist(f"{kind}_image_url")
+        prices = request.form.getlist(f"{kind}_unit_price") if include_price else []
+        rows = []
+        for i, name in enumerate(names):
+            rows.append({
                 "name": name,
-                "required_qty": product_quantities[i] if i < len(product_quantities) else "1",
-                "unit_price": product_prices[i] if i < len(product_prices) else "0",
-                "image_url": product_image_urls[i] if i < len(product_image_urls) else "",
+                "required_qty": quantities[i] if i < len(quantities) else "",
+                "unit_price": prices[i] if include_price and i < len(prices) else "",
+                "image_url": images[i] if i < len(images) else "",
+                "index": i,
             })
-        inkind_names = request.form.getlist("inkind_name")
-        inkind_quantities = request.form.getlist("inkind_required_qty")
-        inkind_rows = [
-            {"name": name, "required_qty": inkind_quantities[i] if i < len(inkind_quantities) else "1"}
-            for i, name in enumerate(inkind_names)
-        ]
-    else:
-        try:
-            product_rows = parse_product_catalog(campaign.product_catalog or DEFAULT_PRODUCT_CATALOG)
-        except ValueError:
-            app.logger.exception("Invalid product catalogue for campaign %s", campaign.id)
-            product_rows = parse_product_catalog(DEFAULT_PRODUCT_CATALOG)
+        return rows
 
-        inkind_rows = []
-        for line in (campaign.required_items or "").splitlines():
-            if not line.strip():
-                continue
-            match = re.fullmatch(r"\s*(.+?)\s*:\s*(\d+)\s*", line)
-            if match:
-                inkind_rows.append({"name": match.group(1).strip(), "required_qty": match.group(2)})
-
-    product_catalog_value = form_values.get("product_catalog", campaign.product_catalog or DEFAULT_PRODUCT_CATALOG)
+    product_rows = (
+        request_rows("product", True)
+        if request.method == "POST"
+        else catalog_rows_for_editor(campaign, "product")
+    )
+    inkind_rows = (
+        request_rows("inkind", False)
+        if request.method == "POST"
+        else catalog_rows_for_editor(campaign, "inkind")
+    )
 
     def render_editor(status=200):
-        return render_template(
+        response = render_template(
             "edit_campaign.html",
             campaign=campaign,
             emergency_types=emergency_types,
             form_values=form_values,
-            product_catalog_value=product_catalog_value,
             product_rows=product_rows,
             inkind_rows=inkind_rows,
             carousel_defaults=DEFAULT_CAROUSEL_IMAGES,
             default_products_intro=DEFAULT_PRODUCTS_INTRO,
             default_in_kind_intro=DEFAULT_IN_KIND_INTRO,
             default_packaging_steps=DEFAULT_PACKAGING_STEPS,
-        ), status
+        )
+        return response, status
 
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         emergency_type = request.form.get("emergency_type", "").strip()
         location = request.form.get("location", "").strip()
-        description = (request.form.get("description")or request.form.get("story_who_helping")or "").strip()
-        card_overview = request.form.get("card_overview", "").strip()
-        listing_image_url = request.form.get("listing_image_url", "").strip()
-
+        description = request.form.get("description", "").strip()
         story_who_helping = request.form.get("story_who_helping", "").strip()
         story_urgency = request.form.get("story_urgency", "").strip()
         story_mission = request.form.get("story_mission", "").strip()
         story_impact = request.form.get("story_impact", "").strip()
-        images = [request.form.get(f"carousel_image_{index}", "").strip() for index in range(1, 4)]
+        images = [request.form.get(f"carousel_image_{i}", "").strip() for i in range(1, 4)]
         products_intro = request.form.get("products_intro", "").strip()
         in_kind_intro = request.form.get("in_kind_intro", "").strip()
+        card_overview = request.form.get("card_overview", "").strip()
+        listing_image_url = request.form.get("listing_image_url", "").strip()
         packaging_steps = request.form.get("packaging_steps", "").strip()
 
-        required_fields = {
-            "title": title,
-            "emergency_type": emergency_type,
-            "location": location,
-            "description": description,
-            "card_overview": card_overview,
-        }
-        missing_fields = [name for name, value in required_fields.items() if not value]
-
-        if missing_fields:
-            app.logger.warning(
-                "Edit campaign validation failed. Missing fields: %s",
-                missing_fields,
-            )
-            flash(
-                "Missing submitted fields: " + ", ".join(missing_fields),
-                "error",
-            )
+        if not all([
+            title,
+            emergency_type,
+            location,
+        ]):
+            flash("Complete the campaign title, category, and location.", "error")
             return render_editor(400)
-
+        
         if len(title) > 180 or len(location) > 200:
-            flash("The title must be at most 180 characters and the location at most 200 characters.", "error")
+            flash("The title must be at most 180 characters and location at most 200 characters.", "error")
             return render_editor(400)
         if emergency_type not in emergency_types:
             flash("Select a valid campaign category.", "error")
             return render_editor(400)
-        if not 200 <= len(card_overview) <= 300:
-            flash("The campaign overview must contain 200–300 characters.", "error")
-            return render_editor(400)
         if any(len(value) > 5000 for value in [description, story_who_helping, story_urgency, story_mission, story_impact, products_intro, in_kind_intro]):
             flash("Descriptions and tab instructions must be 5,000 characters or fewer.", "error")
             return render_editor(400)
-        for image_url in [listing_image_url, *images]:
+        for image_url in images:
             if image_url and not image_url.startswith(("https://", "http://", "/static/")):
-                flash("Images must use HTTP/HTTPS URLs or a /static/ path.", "error")
+                flash("Carousel images must use HTTP/HTTPS URLs or a /static/ path.", "error")
                 return render_editor(400)
-            if len(image_url) > 1000:
-                flash("An image URL is too long.", "error")
-                return render_editor(400)
+        if any(len(image_url) > 1000 for image_url in images):
+            flash("An image URL is too long.", "error")
+            return render_editor(400)
 
         steps = [step.strip() for step in packaging_steps.splitlines() if step.strip()]
         if len(steps) != 4:
-            flash("Enter exactly four packaging instructions, one instruction per line.", "error")
+            flash("Enter exactly four packaging instructions, one per line.", "error")
             return render_editor(400)
         if any(len(step) > 1000 for step in steps):
             flash("Each packaging instruction must be 1,000 characters or fewer.", "error")
             return render_editor(400)
-
-        # Serialize the individual product form rows into the format used by the
-        # donor page and procurement tracker. This fixes the empty-editor mismatch.
-        try:
-            if len(product_rows) > 20:
-                raise ValueError("A campaign can have at most 20 product types.")
-            serialized_products = []
-            seen_product_names = set()
-            for i, row in enumerate(product_rows):
-                name = row["name"].strip()
-                qty_text = str(row["required_qty"]).strip()
-                price_text = str(row["unit_price"]).strip()
-                image_url = str(row["image_url"] or "").strip()
-                if not name or len(name) > 120:
-                    raise ValueError(f"Enter a product name of 1–120 characters on row {i + 1}.")
-                if name.casefold() in seen_product_names:
-                    raise ValueError(f"The product '{name}' appears more than once.")
-                seen_product_names.add(name.casefold())
-                qty = int(qty_text)
-                price = int(price_text)
-                if not 0 <= qty <= 1000000 or not 0 <= price <= 10000000:
-                    raise ValueError("Product quantities and prices are outside the allowed range.")
-                if image_url and not image_url.startswith(("https://", "http://", "/static/")):
-                    raise ValueError(f"Use an HTTP/HTTPS URL or /static/ path for the image for {name}.")
-                upload = request.files.get(f"product_image_{i}")
-                if upload and upload.filename:
-                    image_url = save_product_image(upload, campaign.id, i) or image_url
-                serialized_products.append(f"{name}|{qty}|{price}|{image_url}")
-            if not serialized_products:
-                raise ValueError("Add at least one product to the Donate Products catalogue.")
-            product_catalog_value = "\n".join(serialized_products)
-            # Re-parse for consistent validation with the existing catalogue parser.
-            parse_product_catalog(product_catalog_value)
-        except (ValueError, TypeError) as error:
-            flash(str(error) or "Check the product rows.", "error")
+        if not 200 <= len(card_overview) <= 300:
+            flash(
+                "The campaign overview must contain between 200 and 300 characters.",
+                "error",
+            )
             return render_editor(400)
 
-        # In-kind items use the existing required_items storage and tracker.
+        if listing_image_url and not listing_image_url.startswith(
+            ("https://", "http://", "/static/")
+        ):
+            flash(
+                "Use an HTTP/HTTPS image URL or a /static/ path for the campaign preview image.",
+                "error",
+            )
+            return render_editor(400)
+
+        if len(listing_image_url) > 1000:
+            flash(
+                "The campaign preview image URL is too long.",
+                "error",
+            )
+            return render_editor(400)
+        # Both lists are edited by NGO staff; no product names are hardcoded in the form.
         try:
-            if len(inkind_rows) > 30:
-                raise ValueError("A campaign can have at most 30 physical item types.")
-            raw_inkind = "\n".join(
-                f"{row['name'].strip()}: {str(row['required_qty']).strip()}"
-                for row in inkind_rows if row["name"].strip()
-            )
-            parsed_inkind = parse_campaign_requirements(raw_inkind)
-            required_items_value = "\n".join(
-                f"{item['name']}: {item['required']}" for item in parsed_inkind
-            )
-        except (ValueError, TypeError) as error:
+            product_rows_saved = parse_editor_catalog_from_form("product", campaign.id, include_price=True)
+            inkind_rows_saved = parse_editor_catalog_from_form("inkind", campaign.id, include_price=False)
+        except ValueError as error:
             flash(str(error), "error")
             return render_editor(400)
+
+        # Keep the catalogue strings as the database representation for this prototype.
+        product_catalog_value = "\n".join(
+            f"{row['name']}|{row['required_qty']}|{row['unit_price']}|{row['image_url']}"
+            for row in product_rows_saved
+        )
+        inkind_catalog_value = "\n".join(
+            f"{row['name']}|{row['required_qty']}|{row['image_url']}"
+            for row in inkind_rows_saved
+        )
+        required_items_value = "\n".join(
+            f"{row['name']}: {row['required_qty']}"
+            for row in inkind_rows_saved
+        )
 
         campaign.title = title
         campaign.emergency_type = emergency_type
         campaign.location = location
         campaign.description = description
-        campaign.card_overview = card_overview
-        campaign.listing_image_url = listing_image_url
         campaign.story_who_helping = story_who_helping
         campaign.story_urgency = story_urgency
         campaign.story_mission = story_mission
         campaign.story_impact = story_impact
-        campaign.carousel_image_1, campaign.carousel_image_2, campaign.carousel_image_3 = images
+        campaign.carousel_image_1 = images[0]
+        campaign.carousel_image_2 = images[1]
+        campaign.carousel_image_3 = images[2]
         campaign.products_intro = products_intro
         campaign.in_kind_intro = in_kind_intro
+        campaign.card_overview = card_overview
+        campaign.listing_image_url = listing_image_url
         campaign.packaging_steps = "\n".join(steps)
         campaign.product_catalog = product_catalog_value
+        campaign.inkind_catalog = inkind_catalog_value
         campaign.required_items = required_items_value
         campaign.last_verified_at = datetime.utcnow()
-        db.session.commit()
 
-        flash("Campaign details, images, vendor products, and physical in-kind needs have been saved.", "success")
+        db.session.commit()
+        flash("Campaign details, images, Donate Products and In-kind catalogues have been saved.", "success")
         return redirect(url_for("edit_campaign", campaign_id=campaign.id))
 
     return render_editor()
@@ -3220,6 +3335,7 @@ with app.app_context():
         "in_kind_intro",
         "packaging_steps",
         "product_catalog",
+        "inkind_catalog",
         "card_overview",
         "listing_image_url",
     ]

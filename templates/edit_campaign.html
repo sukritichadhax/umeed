@@ -90,7 +90,7 @@
           class="form-control"
           maxlength="1000"
           placeholder="https://example.com/campaign-image.jpg"
-          value="{{ form_values.get('listing_image_url', campaign.listing_image_url or '') }}"
+          value="{{ form_values.get('listing_image_url', campaign.listing_image_url or 'https://npr.brightspotcdn.com/dims3/default/strip/false/crop/3375x2250+0+0/resize/1200/quality/85/format/webp/?url=http%3A%2F%2Fnpr-brightspot.s3.amazonaws.com%2F7c%2F05%2F469543ab4164bcddf1fe1a1cebed%2Fap24272408399611.jpg') }}"
         >
         <div class="form-text">This image is separate from the three-image campaign detail carousel.</div>
       </div>
@@ -100,9 +100,8 @@
         <img
           id="campaign-listing-preview"
           class="campaign-preview-image"
-          src="{{ form_values.get('listing_image_url', campaign.listing_image_url or '') }}"
+          src="{{ form_values.get('listing_image_url', campaign.listing_image_url or 'https://npr.brightspotcdn.com/dims3/default/strip/false/crop/3375x2250+0+0/resize/1200/quality/85/format/webp/?url=http%3A%2F%2Fnpr-brightspot.s3.amazonaws.com%2F7c%2F05%2F469543ab4164bcddf1fe1a1cebed%2Fap24272408399611.jpg') }}"
           alt="Campaign card preview"
-          {% if not form_values.get('listing_image_url', campaign.listing_image_url or '') %}hidden{% endif %}
         >
       </div>
     </section>
@@ -248,6 +247,18 @@
               </div>
             </div>
 
+            <div class="image-field-row">
+              <div>
+                <label>Image URL (optional)</label>
+                <input type="text" name="inkind_image_url" class="form-control" value="{{ row.image_url }}" placeholder="https://... or /static/..." maxlength="1000">
+                <div class="small-help">An uploaded image overrides this URL.</div>
+              </div>
+              <div>
+                <label>Upload PNG/JPG/WebP</label>
+                <input type="file" name="inkind_image_{{ loop.index0 }}" class="form-control" accept="image/png,image/jpeg,image/webp" data-image-upload>
+              </div>
+              <button type="button" class="btn btn-outline-secondary" data-clear-image>Clear image</button>
+            </div>
           </div>
         {% endfor %}
       </div>
@@ -309,6 +320,11 @@
     <div class="catalog-row-grid inkind-grid">
       <div><label>Product name / pack size</label><input type="text" name="inkind_name" class="form-control" maxlength="120" required placeholder="Clean blankets (1 piece)"></div>
       <div><label>Target quantity</label><input type="number" name="inkind_required_qty" class="form-control" min="1" max="1000000" step="1" required value="1"></div>
+    </div>
+    <div class="image-field-row">
+      <div><label>Image URL (optional)</label><input type="text" name="inkind_image_url" class="form-control" placeholder="https://... or /static/..." maxlength="1000"><div class="small-help">An uploaded image overrides this URL.</div></div>
+      <div><label>Upload PNG/JPG/WebP</label><input type="file" name="inkind_image_0" class="form-control" accept="image/png,image/jpeg,image/webp" data-image-upload></div>
+      <button type="button" class="btn btn-outline-secondary" data-clear-image>Clear image</button>
     </div>
   </div>
 </template>
@@ -423,9 +439,7 @@
 
   if (imageUrl && preview) {
     imageUrl.addEventListener("input", () => {
-      const value = imageUrl.value.trim();
-      preview.hidden = !value;
-      if (value) preview.src = value;
+      if (imageUrl.value.trim()) preview.src = imageUrl.value.trim();
     });
 
     preview.addEventListener("error", () => {

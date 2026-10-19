@@ -31,173 +31,117 @@
 
     <!-- NGOs awaiting approval -->
 
-    <!-- NGOs awaiting approval -->
+    <section class="feature-card mb-4">
 
-<section class="feature-card mb-4">
-    <h2 class="h4 mb-3">NGOs awaiting approval</h2>
+        <h2 class="h4 mb-3">
+            NGOs awaiting approval
+        </h2>
 
-    {% if pending_ngos %}
-    <div class="table-responsive">
-        <table class="table align-middle">
-            <thead>
-                <tr>
-                    <th>Organisation</th>
-                    <th>Contact email</th>
-                    <th>Location</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
+        {% if pending_ngos %}
 
-            <tbody>
-                {% for ngo in pending_ngos %}
-                <tr>
-                    <td>
-                        <strong>{{ ngo.name }}</strong>
+            <div class="table-responsive">
 
-                        <div class="small text-secondary mt-1">
-                            <div>
-                                Legal form:
-                                {{ ngo.legal_form or "Not supplied" }}
-                            </div>
+                <table class="table align-middle">
 
-                            <div>
-                                Registration ref:
-                                {{ ngo.registration_number or "Not supplied" }}
-                            </div>
+                    <thead>
+                        <tr>
+                            <th>Organisation</th>
+                            <th>Contact email</th>
+                            <th>Location</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
 
-                            <div>
-                                Authority:
-                                {{ ngo.registration_authority or "Not supplied" }}
-                            </div>
+                    <tbody>
 
-                            {% if ngo.evidence_url %}
-                                <a
-                                    href="{{ ngo.evidence_url }}"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    Open supporting evidence
-                                </a>
-                            {% else %}
-                                <span>Evidence link not supplied</span>
-                            {% endif %}
-                        </div>
-                    </td>
+                        {% for ngo in pending_ngos %}
 
-                    <td>{{ ngo.email }}</td>
+                            <tr>
 
-                    <td>{{ ngo.location }}</td>
+                                <td>
+                                    <strong>{{ ngo.name }}</strong>
+                                    <div class="small text-secondary mt-1">
+                                        <div>Legal form: {{ ngo.legal_form or "Not supplied" }}</div>
+                                        <div>Registration ref: {{ ngo.registration_number or "Not supplied" }}</div>
+                                        <div>Authority: {{ ngo.registration_authority or "Not supplied" }}</div>
+                                        {% if ngo.evidence_url %}
+                                        <a href="{{ ngo.evidence_url }}" target="_blank" rel="noopener noreferrer">Open supporting evidence</a>
+                                        {% else %}
+                                        <span>Evidence link not supplied</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
 
-                    <td>
-                        <details>
-                            <summary class="btn btn-outline-primary btn-sm">
-                                Review &amp; approve
-                            </summary>
+                                <td>
+                                    {{ ngo.email }}
+                                </td>
 
-                            <form
-                                action="{{ url_for('approve_ngo', ngo_id=ngo.id) }}"
-                                method="post"
-                                class="border rounded p-3 mt-2"
-                            >
-                                <div class="form-check mb-2">
-                                    <input
-                                        class="form-check-input"
-                                        type="checkbox"
-                                        name="review_registration_checked"
-                                        id="ngo-registration-{{ ngo.id }}"
-                                        required
-                                    >
-                                    <label
-                                        class="form-check-label"
-                                        for="ngo-registration-{{ ngo.id }}"
-                                    >
-                                        Registration details reviewed
-                                    </label>
-                                </div>
+                                <td>
+                                    {{ ngo.location }}
+                                </td>
 
-                                <div class="form-check mb-2">
-                                    <input
-                                        class="form-check-input"
-                                        type="checkbox"
-                                        name="review_address_checked"
-                                        id="ngo-address-{{ ngo.id }}"
-                                        required
-                                    >
-                                    <label
-                                        class="form-check-label"
-                                        for="ngo-address-{{ ngo.id }}"
-                                    >
-                                        Organisation location checked
-                                    </label>
-                                </div>
+                                <details class="mt-2">
+                                            <summary class="btn btn-outline-primary btn-sm">Review & approve</summary>
+                                            <form action="{{ url_for('approve_campaign', campaign_id=campaign.id) }}" method="post" class="border rounded p-3 mt-2">
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input" type="checkbox" name="review_location_checked" id="camp-location-{{ campaign.id }}" required>
+                                                    <label class="form-check-label" for="camp-location-{{ campaign.id }}">Reported location checked</label>
+                                                </div>
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input" type="checkbox" name="review_requirements_checked" id="camp-needs-{{ campaign.id }}" required>
+                                                    <label class="form-check-label" for="camp-needs-{{ campaign.id }}">Item names and quantities reviewed</label>
+                                                </div>
+                                                <div class="form-check mb-3">
+                                                    <input class="form-check-input" type="checkbox" name="review_evidence_checked" id="camp-evidence-{{ campaign.id }}" required>
+                                                    <label class="form-check-label" for="camp-evidence-{{ campaign.id }}">Supporting evidence reviewed</label>
+                                                </div>
+                                                <label class="form-label" for="camp-notes-{{ campaign.id }}">Review notes</label>
+                                                <textarea class="form-control mb-2" id="camp-notes-{{ campaign.id }}" name="review_notes" rows="2" maxlength="2000" required placeholder="What did you verify?"></textarea>
+                                                <button type="submit" class="btn btn-success btn-sm">Save review & publish</button>
+                                            </form>
+                                        </details>
 
-                                <div class="form-check mb-3">
-                                    <input
-                                        class="form-check-input"
-                                        type="checkbox"
-                                        name="review_contact_checked"
-                                        id="ngo-contact-{{ ngo.id }}"
-                                        required
-                                    >
-                                    <label
-                                        class="form-check-label"
-                                        for="ngo-contact-{{ ngo.id }}"
-                                    >
-                                        Supporting evidence and contact details reviewed
-                                    </label>
-                                </div>
 
-                                <label
-                                    class="form-label"
-                                    for="ngo-notes-{{ ngo.id }}"
-                                >
-                                    Review notes
-                                </label>
+                                        <form
+                                            action="{{ url_for(
+                                                'reject_ngo',
+                                                ngo_id=ngo.id
+                                            ) }}"
+                                            method="post"
+                                        >
 
-                                <textarea
-                                    class="form-control mb-3"
-                                    id="ngo-notes-{{ ngo.id }}"
-                                    name="review_notes"
-                                    rows="3"
-                                    maxlength="2000"
-                                    required
-                                    placeholder="Describe what you verified."
-                                ></textarea>
+                                            <button
+                                                type="submit"
+                                                class="btn btn-outline-danger btn-sm"
+                                            >
+                                                Reject
+                                            </button>
 
-                                <button
-                                    type="submit"
-                                    class="btn btn-success btn-sm"
-                                >
-                                    Save review &amp; approve NGO
-                                </button>
-                            </form>
-                        </details>
+                                        </form>
 
-                        <form
-                            action="{{ url_for('reject_ngo', ngo_id=ngo.id) }}"
-                            method="post"
-                            class="mt-2"
-                        >
-                            <button
-                                type="submit"
-                                class="btn btn-outline-danger btn-sm"
-                            >
-                                Reject
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                                    </div>
 
-    {% else %}
-        <p class="text-secondary mb-0">
-            No NGOs are awaiting approval.
-        </p>
-    {% endif %}
-</section>
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <p class="text-secondary mb-0">
+                No NGOs are awaiting approval.
+            </p>
+
+        {% endif %}
+
+    </section>
 
 
     <!-- Campaigns awaiting approval -->
@@ -248,93 +192,25 @@
 
                                 <td>
 
-                                    <div class="d-flex flex-column gap-2">
+                                    <div class="d-flex flex-wrap gap-2">
 
-                                        <details>
-                                            <summary class="btn btn-success btn-sm">
-                                                Review &amp; approve
-                                            </summary>
+                                        <form
+                                            action="{{ url_for(
+                                                'approve_campaign',
+                                                campaign_id=campaign.id
+                                            ) }}"
+                                            method="post"
+                                        >
 
-                                            <form
-                                                action="{{ url_for(
-                                                    'approve_campaign',
-                                                    campaign_id=campaign.id
-                                                ) }}"
-                                                method="post"
-                                                class="border rounded p-3 mt-2"
+                                            <button
+                                                type="submit"
+                                                class="btn btn-success btn-sm"
                                             >
-                                                <div class="form-check mb-2">
-                                                    <input
-                                                        class="form-check-input"
-                                                        type="checkbox"
-                                                        name="review_location_checked"
-                                                        id="campaign-location-{{ campaign.id }}"
-                                                        required
-                                                    >
-                                                    <label
-                                                        class="form-check-label"
-                                                        for="campaign-location-{{ campaign.id }}"
-                                                    >
-                                                        Campaign location reviewed
-                                                    </label>
-                                                </div>
+                                                Approve
+                                            </button>
 
-                                                <div class="form-check mb-2">
-                                                    <input
-                                                        class="form-check-input"
-                                                        type="checkbox"
-                                                        name="review_requirements_checked"
-                                                        id="campaign-requirements-{{ campaign.id }}"
-                                                        required
-                                                    >
-                                                    <label
-                                                        class="form-check-label"
-                                                        for="campaign-requirements-{{ campaign.id }}"
-                                                    >
-                                                        Required items and quantities reviewed
-                                                    </label>
-                                                </div>
+                                        </form>
 
-                                                <div class="form-check mb-3">
-                                                    <input
-                                                        class="form-check-input"
-                                                        type="checkbox"
-                                                        name="review_evidence_checked"
-                                                        id="campaign-evidence-{{ campaign.id }}"
-                                                        required
-                                                    >
-                                                    <label
-                                                        class="form-check-label"
-                                                        for="campaign-evidence-{{ campaign.id }}"
-                                                    >
-                                                        Supporting evidence reviewed
-                                                    </label>
-                                                </div>
-
-                                                <label
-                                                    class="form-label"
-                                                    for="campaign-notes-{{ campaign.id }}"
-                                                >
-                                                    Review notes
-                                                </label>
-                                                <textarea
-                                                    class="form-control mb-3"
-                                                    id="campaign-notes-{{ campaign.id }}"
-                                                    name="review_notes"
-                                                    rows="3"
-                                                    maxlength="2000"
-                                                    required
-                                                    placeholder="Record what you reviewed."
-                                                ></textarea>
-
-                                                <button
-                                                    type="submit"
-                                                    class="btn btn-success btn-sm"
-                                                >
-                                                    Save review &amp; approve campaign
-                                                </button>
-                                            </form>
-                                        </details>
 
                                         <form
                                             action="{{ url_for(
@@ -343,12 +219,14 @@
                                             ) }}"
                                             method="post"
                                         >
+
                                             <button
                                                 type="submit"
                                                 class="btn btn-outline-danger btn-sm"
                                             >
                                                 Reject
                                             </button>
+
                                         </form>
 
                                     </div>

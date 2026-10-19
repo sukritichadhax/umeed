@@ -7,4 +7,4 @@ python-dotenv
 pytest
 gunicorn
 psycopg2-binary
-psycopg[binary]>=3.2,<4
+psycopg
